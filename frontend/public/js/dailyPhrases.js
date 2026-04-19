@@ -66,6 +66,8 @@ const DailyPhrases = (() => {
         _currentIdx = 0;
         // If API returned too few phrases, ensure minimum for English advanced
         if (_lang === 'en' && _difficulty === 'advanced') ensureMinPhrases(8);
+        // Randomize start so the first phrase varies between refreshes
+        rotateStartRandomly();
         _lastFetched = data.data.generatedAt;
         _renderCurrentPhrase();
         _renderPhraseNav();
@@ -141,6 +143,8 @@ const DailyPhrases = (() => {
     _currentIdx = 0;
     // Ensure user sees enough phrases for English/advanced (request: show 8)
     if (_lang === 'en' && _difficulty === 'advanced') ensureMinPhrases(8);
+    // Randomize start so the first phrase varies between refreshes
+    rotateStartRandomly();
     _renderCurrentPhrase();
     _renderPhraseNav();
     _showPhraseCard();
@@ -159,6 +163,15 @@ const DailyPhrases = (() => {
       _phrases.push(Object.assign({}, src));
       i += 1;
     }
+  };
+
+  // Rotate the phrase array so the starting phrase is not always the same.
+  // This picks a random offset and cyclically shifts the array in-place.
+  const rotateStartRandomly = () => {
+    if (!_phrases || _phrases.length <= 1) return;
+    const start = Math.floor(Math.random() * _phrases.length);
+    if (start === 0) return; // already random
+    _phrases = _phrases.slice(start).concat(_phrases.slice(0, start));
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
