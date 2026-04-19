@@ -160,8 +160,31 @@ const initSmoothScroll = () => {
 
 // ─── Demo button ─────────────────────────────────────────────────────────────
 const initDemoBtn = () => {
-  document.getElementById('watchDemo')?.addEventListener('click', () => {
-    AuthModule?.showToast('Demo coming soon — sign up to try it live!', 'info');
+  const handler = (e) => {
+    const msg = 'Demo coming soon — sign up to try it live!';
+    if (window.AuthModule && typeof AuthModule.showToast === 'function') {
+      try { AuthModule.showToast(msg, 'info'); } catch (err) { console.warn('AuthModule.showToast failed', err); }
+    } else {
+      // graceful fallback when AuthModule isn't available
+      try { alert(msg); } catch (err) { console.warn('alert fallback failed', err); }
+    }
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  };
+
+  // Attach directly if element exists now
+  const el = document.getElementById('watchDemo');
+  if (el) {
+    el.addEventListener('click', handler);
+    return;
+  }
+
+  // Fallback: delegate at document level for dynamically-inserted buttons
+  document.addEventListener('click', (e) => {
+    const tgt = e.target;
+    if (!tgt) return;
+    if (tgt.id === 'watchDemo' || (tgt.closest && tgt.closest('#watchDemo'))) {
+      handler(e);
+    }
   });
 };
 
