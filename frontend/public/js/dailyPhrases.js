@@ -64,6 +64,8 @@ const DailyPhrases = (() => {
       if (data.success && data.data.phrases?.length) {
         _phrases    = data.data.phrases;
         _currentIdx = 0;
+        // If API returned too few phrases, ensure minimum for English advanced
+        if (_lang === 'en' && _difficulty === 'advanced') ensureMinPhrases(8);
         _lastFetched = data.data.generatedAt;
         _renderCurrentPhrase();
         _renderPhraseNav();
@@ -137,9 +139,26 @@ const DailyPhrases = (() => {
     const lang = _lang in FALLBACK ? _lang : 'en';
     _phrases    = FALLBACK[lang];
     _currentIdx = 0;
+    // Ensure user sees enough phrases for English/advanced (request: show 8)
+    if (_lang === 'en' && _difficulty === 'advanced') ensureMinPhrases(8);
     _renderCurrentPhrase();
     _renderPhraseNav();
     _showPhraseCard();
+  };
+
+  // Ensure there are at least `min` phrases by repeating existing ones.
+  // Used when the API (or fallback) returns too few items — particularly
+  // requested: when English + advanced is selected, show 8 phrases.
+  const ensureMinPhrases = (min = 8) => {
+    if (!_phrases || !_phrases.length) return;
+    const orig = _phrases.slice();
+    let i = 0;
+    while (_phrases.length < min) {
+      // clone an entry from the originals to avoid mutating the same object
+      const src = orig[i % orig.length];
+      _phrases.push(Object.assign({}, src));
+      i += 1;
+    }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
