@@ -256,38 +256,26 @@ const listSessions = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const googleCallback = async (req, res) => {
   try {
-    const user = req.user;
-    const { accessToken, refreshToken } = await generateTokenPair(user);
-    setRefreshCookie(res, refreshToken);
+    const { accessToken, refreshToken } = await generateTokenPair(req.user);
 
-    // Destroy the temporary Passport session used for OAuth (hybrid flow)
-    const finish = () => {
-      const redirectUrl = new URL(`${FRONTEND_URL}/pages/dashboard.html`);
-      redirectUrl.searchParams.set('token', accessToken);
-      res.redirect(redirectUrl.toString());
-    };
+    const user = JSON.stringify({
+      id:       req.user.id,
+      email:    req.user.email,
+      username: req.user.username,
+      role:     req.user.role,
+    });
 
-    try {
-      if (typeof req.logout === 'function') {
-        // req.logout may accept a callback in newer Passport versions
-        req.logout(() => {});
-      }
-    } catch (e) {
-      // ignore
-    }
+    const frontend = process.env.FRONTEND_URL || 'http://localhost:5500';
 
-    if (req.session) {
-      req.session.destroy((err) => {
-        if (err) logger.warn('Failed to destroy session after OAuth:', err);
-        finish();
-      });
-    } else {
-      finish();
-    }
-
+    res.redirect(
+      `${frontend}/pages/dashboard.html` +
+      `?token=${accessToken}` +
+      `&refresh=${refreshToken}` +
+      `&user=${encodeURIComponent(user)}`
+    );
   } catch (err) {
-    logger.error('Google callback error:', err);
-    res.redirect(`${FRONTEND_URL}/?error=oauth_failed`);
+    const frontend = process.env.FRONTEND_URL || 'http://localhost:5500';
+    res.redirect(`${frontend}/?error=oauth_failed`);
   }
 };
 
