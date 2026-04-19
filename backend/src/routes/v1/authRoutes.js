@@ -83,7 +83,7 @@ router.get('/google',
 // Step 2: Google redirects back here
 router.get('/google/callback',
   passport.authenticate('google', {
-    session: false,           // we use JWT, not Passport sessions
+    session: true,            // allow Passport to use a short-lived session for the OAuth handshake
     failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/?error=oauth_failed`,
   }),
   googleCallback

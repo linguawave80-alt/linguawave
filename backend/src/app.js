@@ -10,7 +10,6 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
 const cookieParser = require('cookie-parser');
-const cookieSession = require('cookie-session');
 const session = require('express-session');
 const path = require('path');
 const passport = require('passport');
@@ -92,15 +91,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ─── Cookie & Session Middleware ──────────────────────────────────────────────
 app.use(cookieParser(process.env.SESSION_SECRET));
 
-app.use(cookieSession({
-  name: 'lw_session',
-  secret: process.env.SESSION_SECRET || 'fallback_secret',
-  maxAge: 24 * 60 * 60 * 1000,
-  secure: process.env.NODE_ENV === 'production',
-  httpOnly: true,
-  sameSite: 'lax',
-}));
-
+// Use express-session for OAuth flows (passport expects session methods like regenerate)
+// Do not use cookie-session here — express-session provides the methods Passport relies on.
 app.use(session({
   secret: process.env.SESSION_SECRET || 'fallback_secret',
   resave: false,
@@ -108,6 +100,7 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000,
   },
 }));
@@ -122,6 +115,7 @@ const { initPassport } = require('./config/passport');
 initPassport(); // ✅ THIS WAS MISSING
 
 app.use(passport.initialize());
+app.use(passport.session());
 
 // ─── Custom Middleware ────────────────────────────────────────────────────────
 app.use(requestLogger);

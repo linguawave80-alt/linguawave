@@ -259,9 +259,32 @@ const googleCallback = async (req, res) => {
     const user = req.user;
     const { accessToken, refreshToken } = await generateTokenPair(user);
     setRefreshCookie(res, refreshToken);
-    const redirectUrl = new URL(`${FRONTEND_URL}/pages/dashboard.html`);
-    redirectUrl.searchParams.set('token', accessToken);
-    res.redirect(redirectUrl.toString());
+
+    // Destroy the temporary Passport session used for OAuth (hybrid flow)
+    const finish = () => {
+      const redirectUrl = new URL(`${FRONTEND_URL}/pages/dashboard.html`);
+      redirectUrl.searchParams.set('token', accessToken);
+      res.redirect(redirectUrl.toString());
+    };
+
+    try {
+      if (typeof req.logout === 'function') {
+        // req.logout may accept a callback in newer Passport versions
+        req.logout(() => {});
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    if (req.session) {
+      req.session.destroy((err) => {
+        if (err) logger.warn('Failed to destroy session after OAuth:', err);
+        finish();
+      });
+    } else {
+      finish();
+    }
+
   } catch (err) {
     logger.error('Google callback error:', err);
     res.redirect(`${FRONTEND_URL}/?error=oauth_failed`);
