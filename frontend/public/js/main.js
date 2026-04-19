@@ -257,3 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initSmoothScroll();
   initDemoBtn();
 });
+
+// Ensure demo button is initialized even if other init steps fail
+document.addEventListener('DOMContentLoaded', () => { initDemoBtn(); });
