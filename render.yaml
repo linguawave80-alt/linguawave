@@ -4,7 +4,7 @@ services:
     name: linguawave-backend
     runtime: node
     rootDir: backend
-    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy
+    buildCommand: npm install && npx prisma generate
     startCommand: npm start
     healthCheckPath: /health
     envVars:
