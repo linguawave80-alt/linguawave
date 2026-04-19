@@ -136,7 +136,7 @@ const register = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Registration successful',
-      data: { user: safeUser(user), accessToken },
+      data: { user: safeUser(user), accessToken, refreshToken: newToken },
     });
 
   } catch (err) {
@@ -181,7 +181,7 @@ const login = async (req, res, next) => {
     logger.info(`User logged in: ${email}`);
     res.json({
       success: true,
-      data: { user: safeUser({ ...user }), accessToken },
+      data: { user: safeUser({ ...user }), accessToken, refreshToken },
     });
 
   } catch (err) {
@@ -194,10 +194,10 @@ const login = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const refreshToken = async (req, res, next) => {
   try {
-    const raw = req.cookies?.lw_refresh || req.cookies?.refreshToken || req.body?.refreshToken;
-    if (!raw) throw new AppError('No refresh token', 401, 'NO_REFRESH_TOKEN');
+    const token = req.cookies?.refreshToken || req.body?.refreshToken;
+    if (!token) throw new AppError('No refresh token', 401, 'NO_REFRESH_TOKEN');
 
-    const decoded = await verifyRefreshToken(raw);
+    const decoded = await verifyRefreshToken(token);
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },

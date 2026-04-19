@@ -114,8 +114,9 @@ const AuthModule = (() => {
     setButtonLoading('registerSubmit', true);
     try {
       const res = await ApiClient.auth.register({ email, username, password });
-      // Store access token in memory only (ApiClient closure)
+      // Store access token in memory and refresh token in localStorage
       ApiClient.setToken(res.data.accessToken);
+      localStorage.setItem('lw_refresh', res.data.refreshToken);
       // Fetch full user profile from MongoDB Atlas — no localStorage
       const profileRes = await ApiClient.users.me();
       setUser(profileRes.data.user);
@@ -145,6 +146,7 @@ const AuthModule = (() => {
     try {
       const res = await ApiClient.auth.login({ email, password });
       ApiClient.setToken(res.data.accessToken);
+      localStorage.setItem('lw_refresh', res.data.refreshToken);
       // Fetch profile from MongoDB Atlas
       const profileRes = await ApiClient.users.me();
       setUser(profileRes.data.user);
@@ -162,7 +164,10 @@ const AuthModule = (() => {
     try { await ApiClient.auth.logout(); } catch { /* ignore */ }
     ApiClient.clearToken();
     setUser(null);
-    // No localStorage to clear — nothing stored there
+    // Clear stored refresh token and any legacy items
+    localStorage.removeItem('lw_refresh');
+    localStorage.removeItem('lw_user');
+    localStorage.removeItem('lw_token');
     window.location.href = '/';
   };
 

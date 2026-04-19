@@ -16,6 +16,7 @@ const ApiClient = (() => {
   const BASE_URL = window.location.hostname === 'localhost'
   ? 'http://localhost:5000/api/v1'
   : 'https://linguawave-backend-qk64.onrender.com/api/v1';
+  
 
   // ── Access token lives ONLY here — never in localStorage ─────────────────
   let _accessToken = null;
@@ -40,24 +41,31 @@ const ApiClient = (() => {
   };
 
   // ── Automatic silent token refresh ───────────────────────────────────────
-  // The httpOnly refresh-token cookie is sent automatically by the browser
-  // (credentials: 'include'). The server rotates it and returns a new
-  // access token. JS never sees the refresh token value — only the server can.
+  // Previously the refresh token lived in an httpOnly cookie. We also support
+  // storing a refresh token in localStorage (`lw_refresh`) and will POST it
+  // to `/auth/refresh` when available. The endpoint returns a new accessToken
+  // and optionally a rotated refreshToken.
   const refreshAccessToken = async () => {
     try {
-      const res = await fetch(`${BASE_URL}/auth/refresh`, {
-        method:      'POST',
-        credentials: 'include',           // sends the httpOnly cookie
-        headers:     { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
+      const refreshToken = localStorage.getItem('lw_refresh');
+      if (!refreshToken) return false;
+
+      const data = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      }).then(r => r.json());
+
       if (data.data?.accessToken) {
-        _accessToken = data.data.accessToken;
-        // Notify any listeners (e.g. dashboard auth guard)
+        setToken(data.data.accessToken);
+        if (data.data?.refreshToken) {
+          setRefreshToken(data.data.refreshToken);
+        }
+        // Notify listeners that token was refreshed
         window.dispatchEvent(new CustomEvent('auth:tokenRefreshed'));
         return true;
       }
-    } catch { /* network error — stay logged out */ }
+    } catch { /* ignore */ }
     return false;
   };
 
@@ -87,8 +95,16 @@ const ApiClient = (() => {
 
   // ── Public token API ─────────────────────────────────────────────────────
   // setToken() is called once after login/register/OAuth redirect.
-  // It ONLY writes to the in-memory closure — nothing touches localStorage.
-  const setToken = (token) => { _accessToken = token || null; };
+  // We persist the access token and refresh token to localStorage per UX needs.
+  const setToken = (token) => {
+    _accessToken = token || null;
+    if (token) localStorage.setItem('lw_token', token);
+    else localStorage.removeItem('lw_token');
+  };
+  const setRefreshToken = (token) => {
+    if (token) localStorage.setItem('lw_refresh', token);
+    else localStorage.removeItem('lw_refresh');
+  };
   const clearToken = () => { _accessToken = null; };
   const getToken   = () => _accessToken;
 
@@ -101,7 +117,7 @@ const ApiClient = (() => {
   };
 
   return {
-    setToken, clearToken, getToken, bootstrap,
+    setToken, setRefreshToken, clearToken, getToken, bootstrap,
 
     // ── Auth ────────────────────────────────────────────────────────────
     auth: {
