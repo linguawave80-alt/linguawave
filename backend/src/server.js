@@ -7,6 +7,7 @@ require('dotenv').config();
 const http = require('http');           // Node.js core: HTTP module
 const path = require('path');           // Node.js core: Path module
 const { EventEmitter } = require('events'); // Node.js core: EventEmitter
+const HOST = "0.0.0.0";
 
 
 
@@ -42,7 +43,7 @@ async function bootstrap() {
     await connectPostgres();
     serverEvents.emit('db:postgres:connected');
 
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 10000;
 
     server.listen(PORT, () => {
       logger.info(`🚀 LinguaWave server running on port ${PORT}`);

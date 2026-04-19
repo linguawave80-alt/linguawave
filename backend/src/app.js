@@ -44,6 +44,10 @@ const phraseRoutes = require('./routes/v1/phraseRoutes');
 // ✅ CREATE APP FIRST
 const app = express();
 
+// Trust the first proxy (e.g., when running behind Render/nginx) so secure
+// cookies and req.protocol are correct. Adjust if you have multiple proxies.
+app.set('trust proxy', 1);
+
 // ─── Security Middleware ──────────────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: false,
