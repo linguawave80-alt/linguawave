@@ -50,6 +50,7 @@ const DailyPhrases = (() => {
         {
           headers: {
             'Content-Type':  'application/json',
+            
             'Authorization': `Bearer ${token}`,
           },
           credentials: 'include',
@@ -109,6 +110,26 @@ const DailyPhrases = (() => {
       { text: 'Buenos días, ¿cómo está usted?', phonetic: '/ˈbwenos ˈdias ˈkomo esˈta usˈteð/', topic: 'Greetings', translation: 'Good morning, how are you? (formal)', tip: '"Usted" ends with a soft "d" — like English "th" in "the".' },
       { text: '¿Me puede decir cómo llegar al museo?', phonetic: '/me ˈpweðe ðe.ˈθiɾ ˈkomo ʎeˈɣaɾ al muˈseo/', topic: 'Travel', translation: 'Can you tell me how to get to the museum?', tip: '"Ll" sounds like English "y" in Latin America.' },
       { text: 'Quisiera reservar una mesa para dos personas.', phonetic: '/kiˈsjera reseɾˈβaɾ ˈuna ˈmesa ˈpaɾa ðos peɾˈsonas/', topic: 'Restaurant', translation: 'I would like to reserve a table for two people.', tip: '"Quisiera" (imperfect subjunctive) is the polite form of "want".' },
+    ],
+    ja: [
+      { text: 'こんにちは、お元気ですか？', phonetic: '/konnichiwa o-genki desu ka/', topic: 'Greetings', translation: 'Hello, how are you?', tip: 'Use a polite tone; Japanese often omits subjects.' },
+      { text: 'すみません、駅はどこですか？', phonetic: '/sumimasen, eki wa doko desu ka?/', topic: 'Travel', translation: 'Excuse me, where is the station?', tip: 'Say "sumimasen" for attention politely.' },
+      { text: 'コーヒーを一つお願いします。', phonetic: '/koohii o hitotsu onegaishimasu/', topic: 'Food & Drink', translation: 'One coffee, please.', tip: 'Politeness marker "onegaishimasu" makes requests softer.' },
+    ],
+    zh: [
+      { text: '你好，你今天怎么样？', phonetic: '/nǐ hǎo, nǐ jīn tiān zěn me yàng?/', topic: 'Greetings', translation: 'Hello, how are you today?', tip: 'Mandarin tones change meaning — practice the tones.' },
+      { text: '请问，火车站在哪里？', phonetic: '/qǐng wèn, huǒ chē zhàn zài nǎ lǐ?/', topic: 'Travel', translation: 'Excuse me, where is the train station?', tip: 'Start with "qǐng wèn" to be polite.' },
+      { text: '我要一杯咖啡。', phonetic: '/wǒ yào yì bēi kā fēi/', topic: 'Food & Drink', translation: 'I would like a cup of coffee.', tip: '"Wǒ yào" is direct; soften with "qǐng" for politeness.' },
+    ],
+    it: [
+      { text: 'Buongiorno, come sta?', phonetic: '/bwonˈdʒorno ˈkome sta/', topic: 'Greetings', translation: 'Good morning, how are you? (formal)', tip: 'Use formal "Lei" forms for politeness.' },
+      { text: 'Dov&#39;è la stazione più vicina?', phonetic: '/doˈve la staˈtsjone pju ˈvitʃina/', topic: 'Travel', translation: 'Where is the nearest station?', tip: 'Stress the vowel sounds clearly.' },
+      { text: 'Vorrei ordinare un caffè, per favore.', phonetic: '/vorˈrei ordiˈnare un kafˈfɛ per faˈvore/', topic: 'Food & Drink', translation: 'I would like to order a coffee, please.', tip: '"Per favore" is the standard please.' },
+    ],
+    pt: [
+      { text: 'Olá, como você está hoje?', phonetic: '/oˈla ˈkomu voˈse esˈta ʒoʒi/', topic: 'Greetings', translation: 'Hello, how are you today?', tip: 'Brazilian Portuguese has softer "r" sounds.' },
+      { text: 'Com licença, onde fica a estação?', phonetic: '/kõ liˈsẽsɐ ˈõdʒi ˈfikɐ a isˈtɐ̃w/', topic: 'Travel', translation: 'Excuse me, where is the station?', tip: 'Use "com licença" to get attention politely.' },
+      { text: 'Quero um café, por favor.', phonetic: '/ˈkɛɾu ũ kaˈfɛ poʁ faˈvoɾ/', topic: 'Food & Drink', translation: 'I want a coffee, please.', tip: '"Por favor" is the common please.' },
     ],
   };
 
