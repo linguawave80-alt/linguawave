@@ -14,8 +14,8 @@ const ApiClient = (() => {
   // In production (Render): the frontend & backend are on different subdomains,
   // so we must use the absolute backend URL — NOT a relative '/api/v1' path.
   const BASE_URL = window.location.hostname === 'localhost'
-    ? 'http://localhost:5000/api/v1'
-    : 'https://linguawave-backend.onrender.com/api/v1';
+  ? 'http://localhost:5000/api/v1'
+  : 'https://linguawave-backend-qk64.onrender.com/api/v1';
 
   // ── Access token lives ONLY here — never in localStorage ─────────────────
   let _accessToken = null;

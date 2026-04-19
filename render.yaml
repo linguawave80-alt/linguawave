@@ -35,7 +35,7 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false          # Set in Render dashboard
       - key: GOOGLE_CALLBACK_URL
-        sync: false          # e.g. https://linguawave-backend.onrender.com/api/v1/auth/google/callback
+        sync: false          # https://linguawave-backend-qk64.onrender.com/api/v1/auth/google/callback
       - key: EMAIL_HOST
         sync: false
       - key: EMAIL_PORT
@@ -45,7 +45,7 @@ services:
       - key: EMAIL_PASS
         sync: false
       - key: ALLOWED_ORIGINS
-        sync: false          # e.g. https://linguawave-frontend.onrender.com
+        sync: false          # e.g. https://linguawave-frontend.onrender.com (your frontend Render URL)
 
   # ─── Frontend: Static HTML/CSS/JS ────────────────────────────────────────────
   - type: web

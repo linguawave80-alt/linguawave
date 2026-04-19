@@ -667,7 +667,7 @@ const initConversation = () => {
     showLoadingBubble();
 
     try {
-      const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://linguawave-backend-qk64.onrender.com';
       const res = await fetch(`${API}/api/v1/conversation/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ApiClient.getToken()}` },
@@ -878,7 +878,9 @@ let chatInitialized = false;
 const initChat = () => {
   if (chatInitialized) return;
   chatInitialized = true;
-  const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '/';
+  const SERVER_URL = window.location.hostname === 'localhost'
+  ? 'http://localhost:5000' 
+  : 'https://linguawave-backend-qk64.onrender.com';
   let socket;
   try {
     // Pass the in-memory access token — NOT from localStorage
