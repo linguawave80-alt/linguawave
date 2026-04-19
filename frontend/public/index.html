@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinguaWave — Speak the World</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+
+<body>
+
+  <!-- Animated Background -->
+  <div class="bg-orbs" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="orb orb-4"></div>
+  </div>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <!-- Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-inner">
+      <a href="#" class="logo">
+        <span class="logo-icon">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <circle cx="14" cy="14" r="13" stroke="url(#g1)" stroke-width="2" />
+            <path d="M8 14 Q14 7 20 14 Q14 21 8 14Z" fill="url(#g1)" />
+            <defs>
+              <linearGradient id="g1" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#7FFFD4" />
+                <stop offset="1" stop-color="#00B4D8" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </span>
+        LinguaWave
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#languages">Languages</a>
+      </div>
+      <div class="nav-actions">
+        <button class="btn-ghost" id="openLoginBtn">Log In</button>
+        <button class="btn-primary" id="openRegisterBtn">Get Started</button>
+      </div>
+      <button class="hamburger" id="hamburger" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        AI-Powered Speech Recognition
+      </div>
+      <h1 class="hero-title">
+        <span class="line-reveal">Master Any</span>
+        <span class="line-reveal delay-1">Language With</span>
+        <span class="line-reveal delay-2 accent-text">Perfect Pronunciation</span>
+      </h1>
+      <p class="hero-sub">
+        Real-time AI feedback powered by Gemini. Speak, listen, and improve
+        with instant phoneme-level analysis and beautiful accuracy charts.
+      </p>
+      <div class="hero-cta">
+        <button class="btn-hero" id="heroGetStarted">
+          <span>Start Speaking Free</span>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
+        <button class="btn-demo" id="watchDemo">
+          <span class="play-icon">▶</span> Watch Demo
+        </button>
+      </div>
+      <div class="hero-stats">
+        <div class="stat"><span class="stat-num">50K+</span><span class="stat-label">Learners</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat"><span class="stat-num">120+</span><span class="stat-label">Languages</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat"><span class="stat-num">98%</span><span class="stat-label">Accuracy</span></div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="phone-mockup">
+        <div class="phone-screen">
+          <div class="mock-header">
+            <span class="mock-lang">🇫🇷 French</span>
+            <span class="mock-level">Intermediate</span>
+          </div>
+          <div class="mock-phrase">"Bonjour, comment allez-vous?"</div>
+          <div class="wave-visual" id="heroWave">
+            <canvas id="waveCanvas" width="260" height="60"></canvas>
+          </div>
+          <div class="accuracy-ring-wrap">
+            <svg class="accuracy-ring" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="8" />
+              <circle cx="60" cy="60" r="50" fill="none" stroke="url(#ringGrad)" stroke-width="8" stroke-dasharray="314"
+                stroke-dashoffset="50" stroke-linecap="round" transform="rotate(-90 60 60)" class="ring-progress" />
+              <text x="60" y="56" text-anchor="middle" fill="#fff" font-size="20" font-weight="700"
+                font-family="Syne">84%</text>
+              <text x="60" y="72" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="10"
+                font-family="DM Sans">Accuracy</text>
+              <defs>
+                <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop stop-color="#7FFFD4" />
+                  <stop offset="1" stop-color="#00B4D8" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div class="mock-words">
+            <span class="word correct">Bonjour</span>
+            <span class="word close">comment</span>
+            <span class="word correct">allez</span>
+            <span class="word incorrect">vous</span>
+          </div>
+          <div class="mock-tip">💡 Soften the "v" in "vous" — try "voo"</div>
+        </div>
+      </div>
+      <!-- Floating badges -->
+      <div class="float-badge badge-a">
+        <span class="badge-icon">🎯</span>
+        <div><strong>+12%</strong><small>This week</small></div>
+      </div>
+      <div class="float-badge badge-b">
+        <span class="badge-icon">🔥</span>
+        <div><strong>7 day</strong><small>Streak!</small></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="section-header">
+      <div class="section-tag">Why LinguaWave</div>
+      <h2>Everything You Need to Sound Native</h2>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card" data-delay="0">
+        <div class="feature-icon">🎙️</div>
+        <h3>Real-Time Mic Analysis</h3>
+        <p>Speak directly into your microphone. Our AI captures and analyzes every phoneme in under a second.</p>
+      </div>
+      <div class="feature-card" data-delay="100">
+        <div class="feature-icon">📊</div>
+        <h3>Accuracy Charts</h3>
+        <p>Track your progress with beautiful animated charts showing accuracy trends over time, per language.</p>
+      </div>
+      <div class="feature-card" data-delay="200">
+        <div class="feature-icon">🧠</div>
+        <h3>Gemini AI Feedback</h3>
+        <p>Deep phoneme-level analysis powered by Google Gemini with actionable improvement suggestions.</p>
+      </div>
+      <div class="feature-card" data-delay="300">
+        <div class="feature-icon">💬</div>
+        <h3>Live Community Chat</h3>
+        <p>Practice with native speakers and fellow learners via real-time Socket.IO powered chat rooms.</p>
+      </div>
+      <div class="feature-card" data-delay="400">
+        <div class="feature-icon">🏆</div>
+        <h3>Streaks & Achievements</h3>
+        <p>Stay motivated with daily streaks, badges, and a global leaderboard powered by live data.</p>
+      </div>
+      <div class="feature-card" data-delay="500">
+        <div class="feature-icon">🔐</div>
+        <h3>Secure & Private</h3>
+        <p>JWT authentication, RBAC roles, and encrypted sessions keep your data safe and private.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="section-header">
+      <div class="section-tag">The Process</div>
+      <h2>Three Steps to Fluency</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-body">
+          <h3>Choose Your Language</h3>
+          <p>Select from 120+ languages and your proficiency level. Our adaptive algorithm tailors exercises to you.</p>
+        </div>
+      </div>
+      <div class="step-connector">
+        <div class="connector-line"></div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-body">
+          <h3>Speak Into Your Mic</h3>
+          <p>Read aloud the prompt. Your voice is analyzed live by the Gemini AI — no uploads required.</p>
+        </div>
+      </div>
+      <div class="step-connector">
+        <div class="connector-line"></div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-body">
+          <h3>Review & Improve</h3>
+          <p>Get phoneme breakdowns, accuracy scores, and personalized tips. Watch your chart climb week by week.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Auth Modal -->
+  <div class="modal-overlay" id="authModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <button class="modal-close" id="closeModal" aria-label="Close">&times;</button>
+      <div class="modal-tabs">
+        <button class="tab-btn active" data-tab="login">Log In</button>
+        <button class="tab-btn" data-tab="register">Sign Up</button>
+      </div>
+
+      <!-- Login Form -->
+      <div class="tab-content active" id="tab-login">
+        <h2 id="modalTitle">Welcome back</h2>
+        <p class="modal-sub">Continue your language journey</p>
+        <form id="loginForm" novalidate>
+          <div class="form-group">
+            <label for="loginEmail">Email</label>
+            <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email" required />
+            <span class="field-error" id="loginEmailErr"></span>
+          </div>
+          <div class="form-group">
+            <label for="loginPassword">Password</label>
+            <div class="input-wrap">
+              <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password"
+                required />
+              <button type="button" class="toggle-pw" data-target="loginPassword">👁</button>
+            </div>
+            <span class="field-error" id="loginPwErr"></span>
+          </div>
+          <div class="form-toast" id="loginToast"></div>
+          <button type="submit" class="btn-form" id="loginSubmit">
+            <span>Log In</span>
+            <div class="btn-spinner hidden"></div>
+          </button>
+        </form>
+        <!-- Add inside #tab-login, before the closing </div> -->
+        <div class="oauth-divider">
+          <span>or continue with</span>
+        </div>
+        <a href="http://localhost:5000/api/v1/auth/google" class="btn-google">
+          <svg width="18" height="18" viewBox="0 0 18 18">
+            <path
+              d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"
+              fill="#4285F4" />
+            <path
+              d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"
+              fill="#34A853" />
+            <path
+              d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"
+              fill="#FBBC05" />
+            <path
+              d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"
+              fill="#EA4335" />
+          </svg>
+          Continue with Google
+        </a>
+        <p style="text-align:center;margin-top:12px">
+          <a href="reset-password.html" id="forgotPwLink" style="font-size:.8rem;color:var(--text-3)">Forgot
+            password?</a>
+        </p>
+      </div>
+
+      <!-- Register Form -->
+      <div class="tab-content" id="tab-register">
+        <h2>Create account</h2>
+        <p class="modal-sub">Start speaking better today</p>
+        <form id="registerForm" novalidate>
+          <div class="form-group">
+            <label for="regEmail">Email</label>
+            <input type="email" id="regEmail" placeholder="you@example.com" autocomplete="email" required />
+            <span class="field-error" id="regEmailErr"></span>
+          </div>
+          <div class="form-group">
+            <label for="regUsername">Username</label>
+            <input type="text" id="regUsername" placeholder="linguastar" minlength="3" maxlength="20" required />
+            <span class="field-error" id="regUsernameErr"></span>
+          </div>
+          <div class="form-group">
+            <label for="regPassword">Password</label>
+            <div class="input-wrap">
+              <input type="password" id="regPassword" placeholder="Min. 8 characters" minlength="8" required />
+              <button type="button" class="toggle-pw" data-target="regPassword">👁</button>
+            </div>
+            <div class="pw-strength" id="pwStrength">
+              <div class="strength-bar">
+                <div class="strength-fill" id="strengthFill"></div>
+              </div>
+              <span class="strength-label" id="strengthLabel"></span>
+            </div>
+            <span class="field-error" id="regPwErr"></span>
+          </div>
+          <div class="form-toast" id="registerToast"></div>
+          <button type="submit" class="btn-form" id="registerSubmit">
+            <span>Create Account</span>
+            <div class="btn-spinner hidden"></div>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="logo">LinguaWave</span>
+        <p>AI-powered pronunciation coaching for the modern language learner.</p>
+      </div>
+      <div class="footer-links">
+        <h4>Product</h4>
+        <a href="#">Features</a>
+        <a href="#">Pricing</a>
+        <a href="#">API Docs</a>
+      </div>
+      <div class="footer-links">
+        <h4>Support</h4>
+        <a href="#">Help Center</a>
+        <a href="#">Community</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 LinguaWave. Built with Node.js, Express, MongoDB, PostgreSQL & Socket.IO.</span>
+    </div>
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/main.js"></script>
+</body>
+
+</html>

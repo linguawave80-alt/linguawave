@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinguaWave — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap"
+    rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <link rel="stylesheet" href="/css/main.css" />
+  <link rel="stylesheet" href="/css/dashboard.css" />
+</head>
+
+<body class="dash-body">
+
+  <!-- Animated Background -->
+  <div class="bg-orbs" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="orb orb-4"></div>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <a href="../index.html" class="logo">
+        <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
+          <circle cx="14" cy="14" r="13" stroke="url(#sg1)" stroke-width="2" />
+          <path d="M8 14 Q14 7 20 14 Q14 21 8 14Z" fill="url(#sg1)" />
+          <defs>
+            <linearGradient id="sg1" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#7FFFD4" />
+              <stop offset="1" stop-color="#00B4D8" />
+            </linearGradient>
+          </defs>
+        </svg>
+        LinguaWave
+      </a>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-page="practice">
+        <span class="nav-icon">🎙️</span><span>Practice</span>
+      </a>
+      <a href="#" class="nav-item" data-page="conversation">
+        <span class="nav-icon">🤖</span><span>AI Tutor</span>
+      </a>
+      <a href="#" class="nav-item" data-page="progress">
+        <span class="nav-icon">📊</span><span>Progress</span>
+      </a>
+      <a href="#" class="nav-item" data-page="chat">
+        <span class="nav-icon">💬</span><span>Community</span>
+        <span class="nav-badge" id="unreadBadge" style="display:none"></span>
+      </a>
+      <a href="#" class="nav-item" data-page="sessions">
+        <span class="nav-icon">📅</span><span>Sessions</span>
+      </a>
+      <a href="#" class="nav-item" data-page="leaderboard">
+        <span class="nav-icon">🏆</span><span>Leaderboard</span>
+      </a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-pill" id="userPill">
+        <div class="user-avatar" id="userAvatar">?</div>
+        <div class="user-info">
+          <span class="user-name" id="sidebarUsername">Loading…</span>
+          <span class="user-role" id="sidebarRole">User</span>
+        </div>
+      </div>
+      <button class="sidebar-logout" id="logoutBtn">
+        <span>↩</span> Log Out
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="dash-main" id="dashMain">
+
+    <!-- Top Bar -->
+    <div class="topbar">
+      <button class="sidebar-toggle" id="sidebarToggle">☰</button>
+      <h1 class="page-title" id="pageTitle">Practice</h1>
+      <div class="topbar-right">
+        <div class="online-indicator">
+          <span class="online-dot"></span>
+          <span id="onlineCount">0</span> online
+        </div>
+        <div class="streak-pill">
+          🔥 <span id="streakCount">0</span> day streak
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+     REPLACE the existing PAGE: PRACTICE block in dashboard.html
+     (from <div class="page active" id="page-practice"> 
+      to the closing </div> of that page)
+     ═══════════════════════════════════════════════════════════════════════ -->
+
+    <div class="page active" id="page-practice">
+      <div class="practice-layout">
+
+        <!-- ── LEFT COLUMN: Controls ──────────────────────────────────────── -->
+        <div class="practice-card">
+
+          <!-- Header row -->
+          <div class="practice-header">
+            <h2>Speech Practice</h2>
+            <div class="practice-header-right">
+              <!-- Language selector -->
+              <div class="lang-selector">
+                <select id="langSelect">
+                  <option value="en">🇺🇸 English</option>
+                  <option value="fr">🇫🇷 French</option>
+                  <option value="es">🇪🇸 Spanish</option>
+                  <option value="de">🇩🇪 German</option>
+                  <option value="ja">🇯🇵 Japanese</option>
+                  <option value="zh">🇨🇳 Mandarin</option>
+                  <option value="it">🇮🇹 Italian</option>
+                  <option value="pt">🇧🇷 Portuguese</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── DIFFICULTY SELECTOR (Practice page) ────────────────────── -->
+          <div class="practice-difficulty-row">
+            <span class="practice-diff-label">Difficulty:</span>
+            <div class="practice-diff-pills">
+              <button class="practice-diff-pill" data-level="beginner">🌱 Beginner</button>
+              <button class="practice-diff-pill active" data-level="intermediate">⚡ Intermediate</button>
+              <button class="practice-diff-pill" data-level="advanced">🔥 Advanced</button>
+            </div>
+          </div>
+
+          <!-- ── PHRASE CARD ─────────────────────────────────────────────── -->
+          <div class="phrase-box phrase-animate-in" id="phraseBox">
+
+            <!-- Top meta bar -->
+            <div class="phrase-meta-bar">
+              <span class="phrase-topic-tag" id="phraseTopicTag">Greetings</span>
+              <span class="phrase-diff-badge" id="phraseDiffBadge" data-level="intermediate">⚡ intermediate</span>
+
+              <!-- "Fresh!" badge — shows briefly after AI regeneration -->
+              <span class="phrase-fresh-badge hidden" id="phraseFreshBadge">
+                <span class="fresh-dot"></span> AI Fresh!
+              </span>
+
+              <!-- Refresh time indicator -->
+              <span class="phrase-refresh-time" id="phraseRefreshTime">Refreshes in ~24h</span>
+            </div>
+
+            <!-- The phrase itself -->
+            <div class="phrase-label">Say this phrase:</div>
+            <div class="phrase-text" id="phraseText">
+              <!-- populated by DailyPhrases.js -->
+              <span class="phrase-loading-text">
+                <span class="phrase-loader-dot"></span>
+                <span class="phrase-loader-dot"></span>
+                <span class="phrase-loader-dot"></span>
+                Generating phrases with AI…
+              </span>
+            </div>
+            <div class="phrase-phonetic" id="phrasePhonetic"></div>
+
+            <!-- Translation row (hidden by default, toggle button reveals) -->
+            <div class="phrase-translation-row">
+              <button class="phrase-translation-toggle" id="phraseTranslationToggle">
+                🌐 Show translation
+              </button>
+              <div class="phrase-translation-wrap hidden" id="phraseTranslationWrap">
+                <span class="phrase-translation" id="phraseTranslation"></span>
+              </div>
+            </div>
+
+            <!-- AI tip -->
+            <div class="phrase-tip-row hidden" id="phraseTip"></div>
+
+            <!-- Navigation controls -->
+            <div class="phrase-nav-row">
+              <button class="phrase-nav-arrow" id="phrasePrevBtn" title="Previous phrase">‹</button>
+
+              <div class="phrase-nav-dots" id="phraseNavDots">
+                <!-- dots injected by JS -->
+              </div>
+
+              <button class="phrase-nav-arrow" id="phraseNextBtn" title="Next phrase">›</button>
+
+              <!-- Counter badge -->
+              <span class="phrase-counter" id="phraseCounter">— / —</span>
+            </div>
+          </div>
+
+          <!-- ── ACTION ROW: New phrase + Refresh ────────────────────────── -->
+          <div class="phrase-action-row">
+            <button class="btn-new-phrase" id="newPhraseBtn">
+              <span class="btn-new-icon">↺</span> Random
+            </button>
+            <button class="btn-phrase-refresh" id="phraseRefreshBtn" title="Generate fresh phrases via AI">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round">
+                <polyline points="1 4 1 10 7 10"></polyline>
+                <path d="M3.51 15a9 9 0 1 0 .49-4.5"></path>
+              </svg>
+              New AI Set
+            </button>
+          </div>
+
+          <!-- ── MICROPHONE ──────────────────────────────────────────────── -->
+          <div class="mic-section">
+            <div class="mic-ring" id="micRing">
+              <div class="mic-pulse" id="micPulse"></div>
+              <button class="mic-btn" id="micBtn" aria-label="Start recording">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="9" y="2" width="6" height="11" rx="3" fill="currentColor" />
+                  <path d="M5 11C5 14.866 8.134 18 12 18C15.866 18 19 14.866 19 11" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" />
+                  <line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  <line x1="9" y1="22" x2="15" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                </svg>
+              </button>
+            </div>
+            <div class="mic-status" id="micStatus">Tap to speak</div>
+            <div class="recording-timer hidden" id="recTimer">0:00</div>
+          </div>
+
+          <!-- Live Waveform -->
+          <div class="live-wave-wrap">
+            <canvas id="liveWaveCanvas" height="56"></canvas>
+          </div>
+
+          <!-- Transcription -->
+          <div class="transcription-box">
+            <div class="trans-label">Your speech:</div>
+            <div class="trans-text" id="transText">
+              <span class="trans-placeholder">Start speaking to see transcription…</span>
+            </div>
+          </div>
+
+          <!-- Analyze Button -->
+          <button class="btn-analyze" id="analyzeBtn" disabled>
+            <span class="btn-icon">✦</span> Analyze Pronunciation
+            <div class="btn-spinner hidden"></div>
+          </button>
+        </div>
+
+        <!-- ── RIGHT COLUMN: Results ──────────────────────────────────────── -->
+        <div class="results-panel" id="resultsPanel">
+          <div class="results-empty" id="resultsEmpty">
+            <div class="empty-icon">🎯</div>
+            <p>Your pronunciation analysis will appear here after you speak.</p>
+          </div>
+
+          <div class="results-content hidden" id="resultsContent">
+            <!-- Score Circle -->
+            <div class="score-circles">
+              <div class="score-circle-wrap">
+                <canvas id="overallScoreCanvas" width="140" height="140"></canvas>
+                <div class="score-label-wrap">
+                  <span class="score-num" id="overallScore">--</span>
+                  <span class="score-sub">Overall</span>
+                </div>
+              </div>
+              <div class="sub-scores">
+                <div class="sub-score">
+                  <span class="sub-label">Fluency</span>
+                  <div class="sub-bar-wrap">
+                    <div class="sub-bar" id="fluencyBar"></div>
+                  </div>
+                  <span class="sub-num" id="fluencyNum">--</span>
+                </div>
+                <div class="sub-score">
+                  <span class="sub-label">Intonation</span>
+                  <div class="sub-bar-wrap">
+                    <div class="sub-bar" id="intonationBar"></div>
+                  </div>
+                  <span class="sub-num" id="intonationNum">--</span>
+                </div>
+                <div class="sub-score">
+                  <span class="sub-label">Stress</span>
+                  <div class="sub-bar-wrap">
+                    <div class="sub-bar" id="stressBar"></div>
+                  </div>
+                  <span class="sub-num" id="stressNum">--</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Word Breakdown -->
+            <div class="words-section">
+              <h4>Word Analysis</h4>
+              <div class="words-grid" id="wordsGrid"></div>
+            </div>
+
+            <!-- AI Suggestions -->
+            <div class="suggestions-section">
+              <h4>AI Suggestions</h4>
+              <ul class="suggestions-list" id="suggestionsList"></ul>
+            </div>
+
+            <!-- Mini Trend Chart -->
+            <div class="trend-mini">
+              <h4>Your Accuracy Trend</h4>
+              <div style="position:relative;height:100px;width:100%;">
+                <canvas id="miniTrendChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- PAGE: AI CONVERSATION                                   -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="page" id="page-conversation">
+      <div class="conv-layout">
+
+        <!-- Header -->
+        <div class="conv-header">
+          <div class="conv-title">
+            <h2>🤖 AI Conversation Partner</h2>
+            <p>Have a real conversation in your target language</p>
+          </div>
+          <div class="conv-controls">
+            <button class="btn-reset-conv" id="resetConvBtn">↺ New Chat</button>
+          </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+
+        <!-- SETUP PANEL (collapses on Start)       -->
+        <!-- ═══════════════════════════════════════ -->
+        <div class="conv-setup-panel" id="convSetupPanel">
+
+          <!-- FEATURE 0: LANGUAGE SELECTOR -->
+          <div class="language-section" id="languageSection">
+            <div class="scenario-header">
+              <span class="scenario-tag">Target Language</span>
+              <span class="scenario-hint">Select the language you want to practice</span>
+            </div>
+            <select id="convLang" class="conv-lang-large">
+              <option value="English">🇺🇸 English</option>
+              <option value="French">🇫🇷 French</option>
+              <option value="Spanish">🇪🇸 Spanish</option>
+              <option value="German">🇩🇪 German</option>
+              <option value="Japanese">🇯🇵 Japanese</option>
+            </select>
+          </div>
+
+          <!-- FEATURE 2: SCENARIO PICKER -->
+          <div class="scenario-section" id="scenarioSection">
+            <div class="scenario-header">
+              <span class="scenario-tag">Choose a Scenario</span>
+              <span class="scenario-hint">Sets the conversation context for the AI</span>
+            </div>
+            <div class="scenario-grid" id="scenarioGrid">
+              <button class="scenario-card active" data-scenario="casual"
+                data-prompt="Have a casual, friendly conversation. Use natural, everyday language. Be warm and approachable.">
+                <span class="scenario-emoji">☕</span>
+                <span class="scenario-name">Casual Chat</span>
+                <span class="scenario-desc">Everyday conversation</span>
+              </button>
+              <button class="scenario-card" data-scenario="interview"
+                data-prompt="Simulate a professional job interview. Ask common interview questions and give structured, professional responses. Use formal language.">
+                <span class="scenario-emoji">💼</span>
+                <span class="scenario-name">Job Interview</span>
+                <span class="scenario-desc">Professional English</span>
+              </button>
+              <button class="scenario-card" data-scenario="travel"
+                data-prompt="Roleplay travel scenarios: airports, hotels, restaurants, asking for directions. Use practical, situational vocabulary.">
+                <span class="scenario-emoji">✈️</span>
+                <span class="scenario-name">Travel</span>
+                <span class="scenario-desc">Real-world situations</span>
+              </button>
+              <button class="scenario-card" data-scenario="debate"
+                data-prompt="Engage in a structured debate. Present arguments, counter-arguments, and use persuasive language. Challenge the learner's reasoning.">
+                <span class="scenario-emoji">🎭</span>
+                <span class="scenario-name">Debate Mode</span>
+                <span class="scenario-desc">Argumentation skills</span>
+              </button>
+              <button class="scenario-card" data-scenario="shopping"
+                data-prompt="Simulate shopping scenarios: asking for prices, sizes, making purchases, returns. Use consumer vocabulary.">
+                <span class="scenario-emoji">🛍️</span>
+                <span class="scenario-name">Shopping</span>
+                <span class="scenario-desc">Consumer vocabulary</span>
+              </button>
+              <button class="scenario-card" data-scenario="medical"
+                data-prompt="Simulate visiting a doctor or pharmacy. Use medical vocabulary carefully and appropriately.">
+                <span class="scenario-emoji">🏥</span>
+                <span class="scenario-name">Doctor Visit</span>
+                <span class="scenario-desc">Medical vocabulary</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- FEATURE 3: DIFFICULTY LEVEL SELECTOR -->
+          <div class="difficulty-section" id="difficultySection">
+            <span class="difficulty-label">Difficulty</span>
+            <div class="difficulty-pills" id="difficultyPills">
+              <button class="diff-pill" data-level="easy"
+                data-prompt="Use simple, short sentences. Speak slowly and clearly. Use common vocabulary only. Be very patient and encouraging.">
+                <span class="diff-icon">🌱</span> Easy
+              </button>
+              <button class="diff-pill active" data-level="medium"
+                data-prompt="Use normal conversational pace and vocabulary. Balance between simplicity and complexity. Correct mistakes gently.">
+                <span class="diff-icon">⚡</span> Medium
+              </button>
+              <button class="diff-pill" data-level="hard"
+                data-prompt="Use complex vocabulary, idioms, and fast natural speech. Don't simplify — challenge the learner with native-level language. Be direct.">
+                <span class="diff-icon">🔥</span> Hard
+              </button>
+            </div>
+          </div>
+
+          <!-- START BUTTON -->
+          <button class="btn-start-conv" id="startConvBtn">
+            <span>✦</span> Start Conversation
+          </button>
+        </div>
+
+        <!-- ACTIVE SESSION BADGE (shown after setup collapses) -->
+        <div class="conv-session-badge hidden" id="convSessionBadge">
+          <span id="badgeScenario">☕ Casual Chat</span>
+          <span class="badge-sep">·</span>
+          <span id="badgeDifficulty">⚡ Medium</span>
+          <span class="badge-sep">·</span>
+          <span id="badgeLang">French</span>
+          <button class="badge-change-btn" id="badgeChangeBtn">Change</button>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- ACTIVE CONVERSATION WRAPPER (70/30 split) -->
+        <!-- ═══════════════════════════════════════ -->
+        <div class="conv-active-wrapper" id="convActiveWrapper">
+
+          <!-- LEFT: Main Chat Column (70%) -->
+          <div class="conv-chat-col">
+            <!-- Chat Messages -->
+            <div class="conv-messages" id="convMessages">
+              <div class="conv-msg ai">
+                <div class="conv-avatar">🤖</div>
+                <div class="conv-bubble">
+                  <div class="conv-text">Hello! I'm your AI language tutor.
+                    Press the mic and start speaking to me in your target language.
+                    I'll respond, correct your mistakes, and help you improve!</div>
+                </div>
+              </div>
+            </div>
+
+
+
+            <!-- Input Bar -->
+            <div class="conv-input-bar">
+              <div class="conv-mic-wrap">
+                <div class="conv-mic-ring" id="convMicRing">
+                  <div class="conv-mic-pulse"></div>
+                  <button class="conv-mic-btn" id="convMicBtn">
+                    <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
+                      <rect x="9" y="2" width="6" height="11" rx="3" fill="currentColor" />
+                      <path d="M5 11C5 14.866 8.13401 18 12 18C15.866 18 19 14.866 19 11" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" />
+                      <line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" />
+                      <line x1="9" y1="22" x2="15" y2="22" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" />
+                    </svg>
+                  </button>
+                </div>
+                <span class="conv-mic-label" id="convMicLabel">Hold to speak</span>
+              </div>
+
+              <!-- Text input fallback -->
+              <div class="conv-text-input">
+                <input type="text" id="convTextInput" placeholder="Or type your message here…" />
+                <button class="conv-send-btn" id="convSendBtn">Send</button>
+              </div>
+
+              <!-- AI Speaking indicator -->
+              <div class="conv-ai-speaking hidden" id="convAiSpeaking">
+                <span class="speaking-dot"></span>
+                <span class="speaking-dot"></span>
+                <span class="speaking-dot"></span>
+                <span>AI is speaking…</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: AI Suggestions Column (30%) -->
+          <div class="conv-suggestions-col" id="convSuggestionsCol">
+
+            <!-- Score Bar -->
+            <div class="conv-score-bar" id="convScoreBar"
+              style="display:none; margin:15px 15px 0 15px; border-radius: 10px;">
+              <span class="score-label">Last Score:</span>
+              <div class="conv-score-track">
+                <div class="conv-score-fill" id="convScoreFill"></div>
+              </div>
+              <span class="conv-score-num" id="convScoreNum">--</span>
+              <span class="conv-encouragement" id="convEncouragement"></span>
+            </div>
+
+            <!-- FEATURE 1: PRONUNCIATION SCORE CHART -->
+            <div class="conv-score-chart-panel" id="convScoreChartPanel"
+              style="display:none; margin: 15px 15px 0 15px; border-radius: 10px;">
+              <div class="score-chart-header">
+                <h4 class="score-chart-title">📈 Session Trend</h4>
+                <div class="score-chart-meta">
+                  <span class="score-chart-stat" id="chartAvgScore">Avg: --</span>
+                  <span class="score-chart-stat" id="chartBestScore">Best: --</span>
+                </div>
+              </div>
+              <div class="score-chart-body">
+                <canvas id="convScoreChart" height="90"></canvas>
+              </div>
+            </div>
+
+            <div class="suggestions-header"
+              style="display:flex; justify-content:space-between; align-items: flex-start; margin-top: 10px; border-top: 1px solid var(--border);">
+              <div>
+                <h3>✨ AI Tutor Feedback</h3>
+                <p>Real-time corrections</p>
+              </div>
+              <button id="closeSuggestionsBtn"
+                style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:1.1rem;padding:4px;">✕</button>
+            </div>
+            <div class="suggestions-content" id="convSuggestionsContent">
+              <div class="suggestions-empty">
+                <div class="empty-icon">📝</div>
+                <p>Start chatting to see language suggestions here.</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- PAGE: PROGRESS CHARTS                                   -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="page" id="page-progress">
+      <div class="charts-grid">
+
+        <!-- Accuracy Over Time — full width -->
+        <div class="chart-card chart-wide">
+          <div class="chart-header">
+            <h3>Accuracy Over Time</h3>
+            <div class="period-btns">
+              <button class="period-btn active" data-days="7">7d</button>
+              <button class="period-btn" data-days="30">30d</button>
+              <button class="period-btn" data-days="90">90d</button>
+            </div>
+          </div>
+          <div class="chart-canvas-wrap">
+            <canvas id="accuracyChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Score Breakdown -->
+        <div class="chart-card">
+          <h3>Score Breakdown</h3>
+          <div class="chart-canvas-wrap">
+            <canvas id="radarChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Sessions Per Week -->
+        <div class="chart-card">
+          <h3>Sessions Per Week</h3>
+          <div class="chart-canvas-wrap">
+            <canvas id="sessionsBarChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Language Progress — full width, no canvas -->
+        <div class="chart-card chart-wide chart-lang">
+          <h3>Language Progress</h3>
+          <div class="lang-progress-list" id="langProgressList"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- PAGE: CHAT                                              -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="page" id="page-chat">
+      <div class="chat-layout">
+        <div class="chat-rooms">
+          <h3>Rooms</h3>
+          <button class="room-btn active" data-room="global">🌍 Global</button>
+          <button class="room-btn" data-room="english">🇺🇸 English</button>
+          <button class="room-btn" data-room="french">🇫🇷 French</button>
+          <button class="room-btn" data-room="spanish">🇪🇸 Spanish</button>
+        </div>
+        <div class="chat-main">
+          <div class="chat-messages" id="chatMessages">
+            <div class="chat-loading">Loading messages…</div>
+          </div>
+          <div class="typing-indicator hidden" id="typingIndicator">
+            <span></span><span></span><span></span>
+            <small id="typingUser"></small>
+          </div>
+          <div class="chat-input-bar">
+            <input type="text" id="chatInput" placeholder="Message the community…" maxlength="2000"
+              autocomplete="off" />
+            <button class="chat-send" id="chatSend">
+              <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+                <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- PAGE: SESSIONS                                          -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="page" id="page-sessions">
+      <div class="sessions-header">
+        <h2>Practice History</h2>
+        <select id="sessionLangFilter">
+          <option value="">All Languages</option>
+          <option value="en">English</option>
+          <option value="fr">French</option>
+          <option value="es">Spanish</option>
+        </select>
+      </div>
+      <div class="sessions-list" id="sessionsList">
+        <div class="list-loading">Loading sessions…</div>
+      </div>
+      <div class="pagination" id="sessionsPagination"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- PAGE: LEADERBOARD                                       -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="page" id="page-leaderboard">
+      <div class="leaderboard-wrap">
+        <h2>Global Leaderboard</h2>
+        <p class="lb-sub">Top learners ranked by total sessions and streak</p>
+        <div class="lb-list" id="lbList">
+          <div class="list-loading">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Toast -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/dashboard.js"></script>
+  <!-- NEW: Feature modules -->
+  <script src="/js/scenarioPicker.js"></script>
+  <script src="/js/scoreChart.js"></script>
+  <script src="/js/dailyPhrases.js"></script>
+</body>
+
+</html>
