@@ -45,7 +45,7 @@ const setRefreshCookie = (res, token) => {
   const opts = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: COOKIE_TTL,
   };
   res.cookie('refreshToken', token, opts);
@@ -55,6 +55,21 @@ const setRefreshCookie = (res, token) => {
 const clearRefreshCookie = (res) => {
   res.clearCookie('refreshToken');
   res.clearCookie('lw_refresh', { path: '/api/v1/auth' });
+};
+
+// Set access token cookie (short-lived)
+const setAccessCookie = (res, token) => {
+  const opts = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 15 * 60 * 1000, // 15 minutes
+  };
+  res.cookie('accessToken', token, { ...opts, path: '/' });
+};
+
+const clearAccessCookie = (res) => {
+  res.clearCookie('accessToken', { path: '/' });
 };
 
 // ── Strip sensitive fields ────────────────────────────────────────────────────
@@ -119,9 +134,9 @@ const register = async (req, res, next) => {
       logger.warn('UserActivity.create failed (non-fatal):', err.message)
     );
 
-    const { accessToken, refreshToken: newToken } = await jwtHelper.rotateTokens(
-  user, raw, { userAgent: req.headers['user-agent'], ipAddress: req.ip }
-);
+    // Create initial token pair and persist refresh session in MongoDB
+    const { accessToken, refreshToken: newToken } = await jwtHelper.generateTokenPair(user, { userAgent: req.headers['user-agent'], ipAddress: req.ip });
+    setAccessCookie(res, accessToken);
     setRefreshCookie(res, newToken);
 
     logger.info(`New user registered: ${email}`);
@@ -136,7 +151,7 @@ const register = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Registration successful',
-      data: { user: safeUser(user), accessToken, refreshToken: newToken },
+      data: { user: safeUser(user) },
     });
 
   } catch (err) {
@@ -170,7 +185,8 @@ const login = async (req, res, next) => {
       throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
     }
 
-    const { accessToken, refreshToken } = await generateTokenPair(user);
+    const { accessToken, refreshToken } = await generateTokenPair(user, { userAgent: req.headers['user-agent'], ipAddress: req.ip });
+    setAccessCookie(res, accessToken);
     setRefreshCookie(res, refreshToken);
 
     await prisma.userProfile.update({
@@ -179,10 +195,7 @@ const login = async (req, res, next) => {
     }).catch((err) => logger.warn('lastActiveAt update failed:', err.message));
 
     logger.info(`User logged in: ${email}`);
-    res.json({
-      success: true,
-      data: { user: safeUser({ ...user }), accessToken, refreshToken },
-    });
+    res.json({ success: true, data: { user: safeUser({ ...user }) } });
 
   } catch (err) {
     next(err);
@@ -197,6 +210,7 @@ const refreshToken = async (req, res, next) => {
     const token = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!token) throw new AppError('No refresh token', 401, 'NO_REFRESH_TOKEN');
 
+    // verify refresh token exists and not revoked
     const decoded = await verifyRefreshToken(token);
 
     const user = await prisma.user.findUnique({
@@ -205,7 +219,10 @@ const refreshToken = async (req, res, next) => {
     });
     if (!user) throw new AppError('User not found', 401);
 
-    const { accessToken, refreshToken: newToken } = await generateTokenPair(user);
+    // Rotate tokens atomically in MongoDB-backed session store
+    const { accessToken, refreshToken: newToken } = await jwtHelper.rotateTokens(user, token, { userAgent: req.headers['user-agent'], ipAddress: req.ip });
+
+    setAccessCookie(res, accessToken);
     setRefreshCookie(res, newToken);
 
     res.json({ success: true, data: { accessToken } });
@@ -221,6 +238,7 @@ const logout = async (req, res) => {
   const raw = req.cookies?.lw_refresh || req.cookies?.refreshToken;
   if (raw && invalidateSession) await invalidateSession(raw).catch(() => { });
   clearRefreshCookie(res);
+  clearAccessCookie(res);
   res.json({ success: true, message: 'Logged out successfully' });
 };
 
@@ -256,23 +274,21 @@ const listSessions = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const googleCallback = async (req, res) => {
   try {
-    const { accessToken, refreshToken } = await generateTokenPair(req.user);
+    // Issue tokens as httpOnly cookies (no tokens in URL)
+    const { accessToken, refreshToken } = await jwtHelper.generateTokenPair(req.user, { userAgent: req.headers['user-agent'], ipAddress: req.ip });
+    setAccessCookie(res, accessToken);
+    setRefreshCookie(res, refreshToken);
 
-    const user = JSON.stringify({
-      id:       req.user.id,
-      email:    req.user.email,
-      username: req.user.username,
-      role:     req.user.role,
-    });
-
+    // Clean up temporary passport session and redirect to frontend dashboard
     const frontend = process.env.FRONTEND_URL || 'http://localhost:5500';
-
-    res.redirect(
-      `${frontend}/pages/dashboard.html` +
-      `?token=${accessToken}` +
-      `&refresh=${refreshToken}` +
-      `&user=${encodeURIComponent(user)}`
-    );
+    if (req.logout) {
+      try { req.logout(); } catch (e) { /* ignore */ }
+    }
+    if (req.session) {
+      req.session.destroy(() => res.redirect(`${frontend}/pages/dashboard.html`));
+    } else {
+      res.redirect(`${frontend}/pages/dashboard.html`);
+    }
   } catch (err) {
     const frontend = process.env.FRONTEND_URL || 'http://localhost:5500';
     res.redirect(`${frontend}/?error=oauth_failed`);
@@ -310,3 +326,4 @@ module.exports = {
   logoutAll, listSessions, googleCallback,
   verifyEmail, requestPasswordReset, resetPassword,
 };
+

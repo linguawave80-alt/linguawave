@@ -1,29 +1,32 @@
-// prisma/schema.prisma
-// PostgreSQL schema using Prisma ORM
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id            String          @id @default(uuid())
-  email         String          @unique
-  username      String          @unique
-  passwordHash  String?
-  googleId      String?         @unique
-  role          Role            @default(USER)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  sessions      PracticeSession[]
-  achievements  Achievement[]
-  chatMessages  ChatMessage[]
-  profile       UserProfile?
+  id                   String            @id @default(uuid())
+  email                String            @unique
+  username             String            @unique
+  passwordHash         String?
+  role                 Role              @default(USER)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  googleId             String?           @unique
+  emailVerified        Boolean           @default(false)
+  emailVerifyToken     String?
+  emailVerifyExpires   DateTime?         @db.Timestamptz(6)
+  passwordResetToken   String?
+  passwordResetExpires DateTime?         @db.Timestamptz(6)
+  avatar               String?
+  achievements         Achievement[]
+  chatMessages         ChatMessage[]
+  sessions             PracticeSession[]
+  profile              UserProfile?
 
   @@map("users")
 }
@@ -31,7 +34,6 @@ model User {
 model UserProfile {
   id              String   @id @default(uuid())
   userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   nativeLanguage  String   @default("en")
   targetLanguages String[]
   totalSessions   Int      @default(0)
@@ -39,22 +41,23 @@ model UserProfile {
   avgAccuracy     Float    @default(0.0)
   streak          Int      @default(0)
   lastActiveAt    DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
 }
 
 model PracticeSession {
-  id            String        @id @default(uuid())
-  userId        String
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  language      String
-  duration      Int           // seconds
-  accuracy      Float
+  id             String   @id @default(uuid())
+  userId         String
+  language       String
+  duration       Int
+  accuracy       Float
   wordsAttempted Int
-  wordsCorrect  Int
-  transcript    String?
-  feedback      String?
-  createdAt     DateTime      @default(now())
+  wordsCorrect   Int
+  transcript     String?
+  feedback       String?
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("practice_sessions")
 }
@@ -62,33 +65,33 @@ model PracticeSession {
 model Achievement {
   id          String   @id @default(uuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   type        String
   title       String
   description String
   earnedAt    DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("achievements")
 }
 
 model ChatMessage {
-  id        String   @id @default(uuid())
+  id        String      @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   roomId    String
   content   String
   type      MessageType @default(TEXT)
-  createdAt DateTime @default(now())
+  createdAt DateTime    @default(now())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("chat_messages")
 }
 
 model Language {
-  id       String @id @default(uuid())
-  code     String @unique
-  name     String
-  flag     String
-  active   Boolean @default(true)
+  id     String  @id @default(uuid())
+  code   String  @unique
+  name   String
+  flag   String
+  active Boolean @default(true)
 
   @@map("languages")
 }

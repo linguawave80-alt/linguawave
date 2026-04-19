@@ -47,25 +47,17 @@ const ApiClient = (() => {
   // and optionally a rotated refreshToken.
   const refreshAccessToken = async () => {
     try {
-      const refreshToken = localStorage.getItem('lw_refresh');
-      if (!refreshToken) return false;
-
-      const data = await fetch(`${BASE_URL}/auth/refresh`, {
+      const res = await fetch(`${BASE_URL}/auth/refresh`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      }).then(r => r.json());
-
-      if (data.data?.accessToken) {
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.data?.accessToken) {
         setToken(data.data.accessToken);
-        if (data.data?.refreshToken) {
-          setRefreshToken(data.data.refreshToken);
-        }
-        // Notify listeners that token was refreshed
         window.dispatchEvent(new CustomEvent('auth:tokenRefreshed'));
         return true;
       }
-    } catch { /* ignore */ }
+    } catch (e) { /* ignore */ }
     return false;
   };
 
@@ -96,15 +88,8 @@ const ApiClient = (() => {
   // ── Public token API ─────────────────────────────────────────────────────
   // setToken() is called once after login/register/OAuth redirect.
   // We persist the access token and refresh token to localStorage per UX needs.
-  const setToken = (token) => {
-    _accessToken = token || null;
-    if (token) localStorage.setItem('lw_token', token);
-    else localStorage.removeItem('lw_token');
-  };
-  const setRefreshToken = (token) => {
-    if (token) localStorage.setItem('lw_refresh', token);
-    else localStorage.removeItem('lw_refresh');
-  };
+  const setToken = (token) => { _accessToken = token || null; };
+  const setRefreshToken = (token) => { /* no-op: refresh tokens are httpOnly cookies */ };
   const clearToken = () => { _accessToken = null; };
   const getToken   = () => _accessToken;
 
