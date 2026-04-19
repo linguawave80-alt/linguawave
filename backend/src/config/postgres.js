@@ -34,8 +34,6 @@ prisma.$on('error', (e) => {
 async function connectPostgres() {
   try {
     await prisma.$connect();
-    // Test connection
-    await prisma.$queryRaw`SELECT 1`;
     logger.info('PostgreSQL connected via Prisma');
   } catch (error) {
     logger.error('PostgreSQL connection failed:', error.message);
