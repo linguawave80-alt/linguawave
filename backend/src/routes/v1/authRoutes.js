@@ -68,17 +68,26 @@ router.post('/reset-password/:token',
 
 // ── Google OAuth ──────────────────────────────────────────────────────────────
 // Step 1: Redirect user → Google
-// FIX: prompt:'select_account' forces the account chooser every time.
-//      Without this, Google silently reuses the last session and skips the picker.
-// FIX: access_type:'offline' is needed to receive a refresh_token from Google.
-// NOTE: session:false does NOT belong in step 1 — it only applies to the callback.
-router.get('/google',
-  passport.authenticate('google', {
+// Robust handler: support both initiation (no query) and a callback landing
+// where Google mistakenly redirects to /google (with ?code=...). In that case
+// treat it like the callback and authenticate.
+router.get('/google', (req, res, next) => {
+  const isCallback = Boolean(req.query && (req.query.code || req.query.error));
+  if (isCallback) {
+    // Handle case where Google redirected back to /google (missing /callback)
+    return passport.authenticate('google', {
+      session: true,
+      failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/?error=oauth_failed`,
+    })(req, res, next);
+  }
+
+  // Normal initiation
+  return passport.authenticate('google', {
     scope: ['profile', 'email'],
-    prompt: 'select_account',   // ← forces account picker — THIS was missing
-    access_type: 'offline',          // ← gets Google refresh_token
-  })
-);
+    prompt: 'select_account',   // forces account picker
+    access_type: 'offline',     // gets Google refresh_token
+  })(req, res, next);
+});
 
 // Step 2: Google redirects back here
 router.get('/google/callback',

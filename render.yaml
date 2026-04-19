@@ -36,6 +36,8 @@ services:
         sync: false          # Set in Render dashboard
       - key: GOOGLE_CALLBACK_URL
         sync: false          # https://linguawave-backend-qk64.onrender.com/api/v1/auth/google/callback
+      - key: FRONTEND_URL
+        value: https://linguawave-frontend.onrender.com/index.html
       - key: EMAIL_HOST
         sync: false
       - key: EMAIL_PORT
