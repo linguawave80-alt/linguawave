@@ -27,6 +27,10 @@ async function generateUsername(displayName) {
 
 // ── Init function (called in app.js/server.js) ────────────────────────────────
 const initPassport = () => {
+  // Log configured Google callback for debugging deployments
+  try {
+    logger.info(`Google callback URL: ${process.env.GOOGLE_CALLBACK_URL || '/api/v1/auth/google/callback'}`);
+  } catch (e) { /* ignore logging failure */ }
   passport.use(
     new GoogleStrategy(
       {
