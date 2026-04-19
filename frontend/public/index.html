@@ -351,9 +351,13 @@
   <script src="js/main.js"></script>
   <script>
     // Set Google OAuth URL dynamically — localhost in dev, Render backend in production
-    // Use a relative path so the dev server or production proxy can route
-    // `/api/v1` to the backend. Avoid hardcoding localhost:5000.
-    document.getElementById('googleOAuthBtn').href = '/api/v1/auth/google';
+    // Use a relative path in development. In production, point to the
+    // deployed backend OAuth callback URL as requested.
+    if (window.location.hostname === 'localhost') {
+      document.getElementById('googleOAuthBtn').href = '/api/v1/auth/google';
+    } else {
+      document.getElementById('googleOAuthBtn').href = 'https://linguawave-backend-qk64.onrender.com/api/v1/auth/google/callback';
+    }
   </script>
 </body>
 
