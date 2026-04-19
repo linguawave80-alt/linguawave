@@ -44,7 +44,7 @@ const DailyPhrases = (() => {
         ...(forceRefresh ? { refresh: '1' } : {}),
       });
 
-      const BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/api/v1' : '/api/v1';
+      const BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/api/v1' : 'https://your-backend-url.onrender.com/api/v1';
       const res = await fetch(
         `${BASE_URL}/phrases/daily?${params}`,
         {
