@@ -165,8 +165,8 @@ const initDemoBtn = () => {
     if (window.AuthModule && typeof AuthModule.showToast === 'function') {
       try { AuthModule.showToast(msg, 'info'); } catch (err) { console.warn('AuthModule.showToast failed', err); }
     } else {
-      // graceful fallback when AuthModule isn't available
-      try { alert(msg); } catch (err) { console.warn('alert fallback failed', err); }
+      // graceful fallback when AuthModule isn't available — use inline toast
+      try { showInlineToast(msg, 'info'); } catch (err) { console.warn('inline toast failed', err); }
     }
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
   };
@@ -186,6 +186,54 @@ const initDemoBtn = () => {
       handler(e);
     }
   });
+};
+
+// Small inline toast (non-blocking) used as a fallback when AuthModule isn't present.
+const showInlineToast = (message, type = 'info', duration = 3500) => {
+  try {
+    let container = document.getElementById('inlineToastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'inlineToastContainer';
+      container.style.position = 'fixed';
+      container.style.right = '20px';
+      container.style.top = '20px';
+      container.style.zIndex = '9999';
+      container.style.display = 'flex';
+      container.style.flexDirection = 'column';
+      container.style.gap = '8px';
+      document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `inline-toast inline-toast-${type}`;
+    toast.style.minWidth = '220px';
+    toast.style.maxWidth = '360px';
+    toast.style.padding = '10px 14px';
+    toast.style.borderRadius = '8px';
+    toast.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
+    toast.style.color = '#05202b';
+    toast.style.background = type === 'error' ? '#ffd6d6' : (type === 'success' ? '#e6fffa' : '#f0f9ff');
+    toast.style.border = '1px solid rgba(0,0,0,0.04)';
+    toast.style.fontSize = '14px';
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(-6px)';
+    toast.style.transition = 'opacity .25s ease, transform .25s ease';
+    toast.textContent = message;
+
+    container.appendChild(toast);
+    // animate in
+    requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)'; });
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(-6px)';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+    return toast;
+  } catch (err) {
+    try { alert(message); } catch (e) { /* ignore */ }
+  }
 };
 
 // ─── Redirect if already logged in ───────────────────────────────────────────
