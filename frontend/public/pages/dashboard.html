@@ -683,35 +683,38 @@
   <script src="/js/scoreChart.js"></script>
   <script src="/js/dailyPhrases.js"></script>
   <script>
-    // ── Dashboard Mobile Sidebar Toggle (responsive) ──
-    const sidebarToggle = document.getElementById('sidebarToggle');
-    const sidebar = document.getElementById('sidebar');
-    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    // ── Mobile Sidebar — single authoritative controller ──
+    // Runs immediately (before DOMContentLoaded) so the toggle
+    // is wired up as soon as the DOM is parsed. dashboard.js
+    // intentionally skips re-attaching the toggle listener.
+    const _sidebarToggle  = document.getElementById('sidebarToggle');
+    const _sidebar        = document.getElementById('sidebar');
+    const _sidebarOverlay = document.getElementById('sidebarOverlay');
 
-    function openSidebar() {
-      sidebar.classList.add('open');
-      sidebarOverlay.classList.add('open');
-      sidebarOverlay.style.display = 'block';
+    window._openSidebar = function () {
+      _sidebar.classList.add('open');
+      _sidebarOverlay.classList.add('open');
+      _sidebarOverlay.style.display = 'block';
       document.body.style.overflow = 'hidden';
-    }
+    };
 
-    function closeSidebar() {
-      sidebar.classList.remove('open');
-      sidebarOverlay.classList.remove('open');
+    window._closeSidebar = function () {
+      _sidebar.classList.remove('open');
+      _sidebarOverlay.classList.remove('open');
       document.body.style.overflow = '';
-      setTimeout(() => { sidebarOverlay.style.display = ''; }, 300);
-    }
+      setTimeout(() => { _sidebarOverlay.style.display = ''; }, 300);
+    };
 
-    sidebarToggle?.addEventListener('click', () => {
-      sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    _sidebarToggle?.addEventListener('click', () => {
+      _sidebar.classList.contains('open') ? window._closeSidebar() : window._openSidebar();
     });
 
-    sidebarOverlay?.addEventListener('click', closeSidebar);
+    _sidebarOverlay?.addEventListener('click', window._closeSidebar);
 
-    // Close sidebar when a nav item is clicked on mobile
+    // Close on nav item tap (mobile)
     document.querySelectorAll('.nav-item').forEach(item => {
       item.addEventListener('click', () => {
-        if (window.innerWidth <= 768) closeSidebar();
+        if (window.innerWidth <= 768) window._closeSidebar();
       });
     });
   </script>

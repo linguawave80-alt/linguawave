@@ -127,11 +127,12 @@ const initNavigation = () => {
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
       item.classList.add('active');
       el('pageTitle').textContent = item.querySelector('span:last-child').textContent;
-      if (window.innerWidth <= 768) el('sidebar')?.classList.remove('open');
+      if (window.innerWidth <= 768) window._closeSidebar?.();
     });
   });
 
-  el('sidebarToggle')?.addEventListener('click', () => el('sidebar')?.classList.toggle('open'));
+  // Sidebar toggle is handled by the inline script in dashboard.html
+  // to avoid duplicate listeners. Do not re-attach here.
 
   el('logoutBtn')?.addEventListener('click', async () => {
     try { await ApiClient.auth.logout(); } catch { /* ignore */ }
@@ -760,51 +761,9 @@ const initConversation = () => {
   }
 };
 
-// Adapt conversation input/message layout for mobile devices.
-// This replaces the text `input#convTextInput` with a `textarea` on small screens
-// and attaches a lightweight auto-resize handler. Runs only on mobile widths.
-const adaptConversationForMobile = () => {
-  try {
-    if (window.innerWidth > 768) return; // desktop: do nothing
-
-    const container = document.querySelector('.conv-text-input');
-    if (!container) return;
-
-    const existing = document.getElementById('convTextInput');
-    // If already a textarea, just ensure autosize handler is attached
-    if (existing && existing.tagName === 'TEXTAREA') {
-      attachAutoResize(existing);
-      return;
-    }
-
-    // Create textarea preserving id, placeholder and classes
-    const ta = document.createElement('textarea');
-    ta.id = 'convTextInput';
-    ta.placeholder = existing?.placeholder || 'Or type your message here…';
-    ta.className = existing?.className || '';
-    ta.rows = 1;
-    // Replace input with textarea in the DOM without changing id
-    if (existing) existing.replaceWith(ta);
-    else container.insertBefore(ta, container.querySelector('#convSendBtn'));
-
-    // Auto-resize function
-    function attachAutoResize(el) {
-      const resize = () => {
-        el.style.height = 'auto';
-        el.style.height = el.scrollHeight + 'px';
-      };
-      el.addEventListener('input', resize, { passive: true });
-      // initial resize
-      setTimeout(resize, 0);
-    }
-
-    attachAutoResize(ta);
-
-    // Move focus behavior: keep existing key handling intact (initConversation will attach handlers later)
-  } catch (err) {
-    console.error('[adaptConversationForMobile] failed', err);
-  }
-};
+// No-op: mobile input layout (90% text input + 10% send btn + full-width mic)
+// is handled entirely by CSS. The old textarea-swap broke the fixed-height design.
+const adaptConversationForMobile = () => {};
 
 let convInitialized = false;
 

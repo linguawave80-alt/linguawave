@@ -726,38 +726,29 @@
   gap: 20px;
   width: 100%;
   min-width: 0;
-  /* no height:auto here — let children define their own height */
 }
 
-/* Every chart card has a FIXED height */
 .chart-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 24px;
   min-width: 0;
-  /* ✅ prevents grid blowout */
   height: 320px;
-  /* ✅ fixed height */
   max-height: 320px;
-  /* ✅ hard cap */
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-/* Canvas wrapper — fills remaining space in card */
 .chart-canvas-wrap {
   position: relative;
   flex: 1;
-  /* ✅ fills remaining height */
   min-height: 0;
-  /* ✅ allows shrink in flex */
   width: 100%;
   overflow: hidden;
 }
 
-/* Canvas fills its wrapper exactly */
 .chart-canvas-wrap canvas {
   position: absolute;
   top: 0;
@@ -766,16 +757,13 @@
   height: 100% !important;
 }
 
-/* Full-width card (accuracy + language) */
 .chart-wide {
   grid-column: span 2;
   min-width: 0;
 }
 
-/* Language progress card — shorter, no canvas */
 .chart-lang {
   height: auto;
-  /* ✅ auto for lang bars */
   max-height: 220px;
   overflow: hidden;
 }
@@ -786,7 +774,6 @@
   align-items: center;
   margin-bottom: 16px;
   flex-shrink: 0;
-  /* ✅ never shrinks */
 }
 
 .chart-card h3 {
@@ -795,7 +782,6 @@
   font-weight: 700;
   margin-bottom: 16px;
   flex-shrink: 0;
-  /* ✅ never shrinks */
 }
 
 .period-btns {
@@ -822,8 +808,9 @@
 .conv-layout {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 72px);
-  gap: 10px;
+  height: calc(100dvh - 72px);
+  gap: 8px;
+  overflow: hidden;
 }
 
 .conv-header {
@@ -896,7 +883,6 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   min-height: 0;
-  /* Ensure the messages box gets as much space as possible */
   flex-grow: 10;
 }
 
@@ -1186,7 +1172,6 @@
   gap: 12px;
   width: 100%;
   min-width: 0;
-  /* ✅ key fix */
 }
 
 .lang-progress-name {
@@ -1204,14 +1189,12 @@
   overflow: hidden;
   width: 100%;
   min-width: 0;
-  /* ✅ key fix */
 }
 
 .lang-bar {
   height: 100%;
   width: 0%;
   max-width: 100%;
-  /* ✅ never exceeds parent */
   border-radius: 8px;
   background: var(--grad-main);
   transition: width 1s cubic-bezier(.4, 0, .2, 1);
@@ -1403,16 +1386,8 @@
 }
 
 @keyframes typingDot {
-
-  0%,
-  60%,
-  100% {
-    transform: translateY(0);
-  }
-
-  30% {
-    transform: translateY(-6px);
-  }
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-6px); }
 }
 
 .chat-input-bar {
@@ -1504,25 +1479,10 @@
   transform: translateX(4px);
 }
 
-.sess-lang {
-  font-size: 1.4rem;
-}
-
-.sess-date {
-  font-size: .8rem;
-  color: var(--text-3);
-  margin-bottom: 3px;
-}
-
-.sess-words {
-  font-size: .85rem;
-  color: var(--text-2);
-}
-
-.sess-dur {
-  font-size: .85rem;
-  color: var(--text-2);
-}
+.sess-lang { font-size: 1.4rem; }
+.sess-date { font-size: .8rem; color: var(--text-3); margin-bottom: 3px; }
+.sess-words { font-size: .85rem; color: var(--text-2); }
+.sess-dur { font-size: .85rem; color: var(--text-2); }
 
 .sess-accuracy {
   font-family: var(--font-display);
@@ -1531,13 +1491,8 @@
   color: var(--teal);
 }
 
-.sess-accuracy.medium {
-  color: var(--gold);
-}
-
-.sess-accuracy.low {
-  color: var(--coral);
-}
+.sess-accuracy.medium { color: var(--gold); }
+.sess-accuracy.low { color: var(--coral); }
 
 .pagination {
   display: flex;
@@ -1601,9 +1556,7 @@
   transition: border-color var(--transition);
 }
 
-.lb-item:hover {
-  border-color: var(--border-2);
-}
+.lb-item:hover { border-color: var(--border-2); }
 
 .lb-rank {
   font-family: var(--font-display);
@@ -1612,9 +1565,7 @@
   color: var(--text-3);
 }
 
-.lb-rank.top {
-  color: var(--gold);
-}
+.lb-rank.top { color: var(--gold); }
 
 .lb-avatar {
   width: 36px;
@@ -1629,90 +1580,25 @@
   font-size: .85rem;
 }
 
-.lb-name {
-  font-weight: 600;
-  font-size: .9rem;
-}
+.lb-name { font-weight: 600; font-size: .9rem; }
+.lb-sessions { font-size: .8rem; color: var(--text-3); }
+.lb-streak { font-size: .8rem; color: var(--gold); font-weight: 600; }
 
-.lb-sessions {
-  font-size: .8rem;
-  color: var(--text-3);
-}
+/* ════════════════════════════════════════════════════════════
+   FEATURE ADDITIONS
+   1. Scenario Picker
+   2. Difficulty Selector
+   3. Pronunciation Score Chart
+   ════════════════════════════════════════════════════════════ */
 
-.lb-streak {
-  font-size: .8rem;
-  color: var(--gold);
-  font-weight: 600;
-}
-
-/* ── Responsive ─────────────────────────────────────────────── */
-@media (max-width: 1024px) {
-  .practice-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .chart-wide {
-    grid-column: span 1;
-  }
-}
-
-@media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 50;
-    transform: translateX(-100%);
-  }
-
-  .sidebar.open {
-    transform: translateX(0);
-  }
-
-  .sidebar-toggle {
-    display: flex;
-  }
-
-  .chat-layout {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
-
-  .chat-rooms {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-
-  .chat-main {
-    height: 600px;
-  }
-}
-
-/* ============================================================
-   LinguaWave — Feature Additions
-   Appended to dashboard.css — DO NOT overwrite existing rules
-   ============================================================
-
-   1. Scenario Picker  (.scenario-*)
-   2. Difficulty Selector  (.difficulty-*, .diff-pill)
-   3. Pronunciation Score Chart  (.conv-score-chart-*, .score-chart-*)
-   ============================================================ */
-
-/* ── Shared section wrapper ─────────────────────────────── */
+/* ── Shared section wrapper ─────────────────────────────────── */
 .scenario-section,
 .difficulty-section {
   padding: 0 0 12px;
   animation: fadeSlideUp .3s ease both;
 }
 
-/* ─────────────────────────────────────────────────────────── */
-/* FEATURE 2 — Scenario Picker                                */
-/* ─────────────────────────────────────────────────────────── */
+/* ── Scenario Picker ────────────────────────────────────────── */
 .scenario-header {
   display: flex;
   align-items: center;
@@ -1744,12 +1630,6 @@
   gap: 8px;
 }
 
-@media (max-width: 640px) {
-  .scenario-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
 .scenario-card {
   display: flex;
   flex-direction: column;
@@ -1760,10 +1640,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
-  transition: background var(--transition),
-    border-color var(--transition),
-    transform var(--transition),
-    box-shadow var(--transition);
+  transition: background var(--transition), border-color var(--transition),
+    transform var(--transition), box-shadow var(--transition);
   position: relative;
   overflow: hidden;
 }
@@ -1784,9 +1662,7 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
 }
 
-.scenario-card:hover::before {
-  opacity: .05;
-}
+.scenario-card:hover::before { opacity: .05; }
 
 .scenario-card.active {
   background: rgba(127, 255, 212, .08);
@@ -1794,11 +1670,8 @@
   box-shadow: 0 0 0 2px rgba(127, 255, 212, .12), 0 8px 24px rgba(0, 0, 0, .3);
 }
 
-.scenario-card.active::before {
-  opacity: .07;
-}
+.scenario-card.active::before { opacity: .07; }
 
-/* Pulse ring on active card */
 .scenario-card.active::after {
   content: '';
   position: absolute;
@@ -1810,46 +1683,15 @@
 }
 
 @keyframes scenarioPulse {
-
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: .4;
-    transform: scale(1.02);
-  }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .4; transform: scale(1.02); }
 }
 
-.scenario-emoji {
-  font-size: 1.4rem;
-  line-height: 1;
-  position: relative;
-  z-index: 1;
-}
+.scenario-emoji { font-size: 1.4rem; line-height: 1; position: relative; z-index: 1; }
+.scenario-name { font-family: var(--font-display); font-size: .78rem; font-weight: 700; color: var(--text); position: relative; z-index: 1; }
+.scenario-desc { font-size: .68rem; color: var(--text-3); position: relative; z-index: 1; }
 
-.scenario-name {
-  font-family: var(--font-display);
-  font-size: .78rem;
-  font-weight: 700;
-  color: var(--text);
-  position: relative;
-  z-index: 1;
-}
-
-.scenario-desc {
-  font-size: .68rem;
-  color: var(--text-3);
-  position: relative;
-  z-index: 1;
-}
-
-
-/* ─────────────────────────────────────────────────────────── */
-/* FEATURE 3 — Difficulty Selector                            */
-/* ─────────────────────────────────────────────────────────── */
+/* ── Difficulty Selector ────────────────────────────────────── */
 .difficulty-section {
   display: flex;
   align-items: center;
@@ -1887,18 +1729,13 @@
   font-size: .78rem;
   font-weight: 600;
   color: var(--text-2);
-  transition: background var(--transition),
-    color var(--transition),
-    box-shadow var(--transition),
-    transform var(--transition);
+  transition: background var(--transition), color var(--transition),
+    box-shadow var(--transition), transform var(--transition);
   cursor: pointer;
   white-space: nowrap;
 }
 
-.diff-pill:hover {
-  color: var(--text);
-  transform: translateY(-1px);
-}
+.diff-pill:hover { color: var(--text); transform: translateY(-1px); }
 
 .diff-pill.active {
   background: var(--grad-main);
@@ -1906,32 +1743,18 @@
   box-shadow: 0 2px 12px rgba(127, 255, 212, .3);
 }
 
-/* Per-level accent colours on hover */
-.diff-pill[data-level="easy"]:hover {
-  color: #7FFFD4;
-}
-
-.diff-pill[data-level="medium"]:hover {
-  color: #00B4D8;
-}
-
-.diff-pill[data-level="hard"]:hover {
-  color: var(--coral);
-}
+.diff-pill[data-level="easy"]:hover { color: #7FFFD4; }
+.diff-pill[data-level="medium"]:hover { color: #00B4D8; }
+.diff-pill[data-level="hard"]:hover { color: var(--coral); }
 
 .diff-pill[data-level="hard"].active {
   background: linear-gradient(135deg, #FF6B6B 0%, #FF9A4D 100%);
   box-shadow: 0 2px 12px rgba(255, 107, 107, .3);
 }
 
-.diff-icon {
-  font-size: .9rem;
-}
+.diff-icon { font-size: .9rem; }
 
-
-/* ─────────────────────────────────────────────────────────── */
-/* FEATURE 1 — Pronunciation Score Chart                      */
-/* ─────────────────────────────────────────────────────────── */
+/* ── Pronunciation Score Chart ──────────────────────────────── */
 .conv-score-chart-panel {
   margin: 0 0 10px;
   background: var(--surface);
@@ -1939,165 +1762,6 @@
   border-radius: var(--radius);
   overflow: hidden;
   animation: fadeSlideUp .35s ease both;
-}
-
-/* Mobile-only tweaks for AI Tutor / Conversation */
-@media (max-width: 768px) {
-
-  /* Make conversation area stack vertically and use full width */
-  .conv-active-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .conv-chat-col {
-    width: 100%;
-    order: 1;
-  }
-
-  .conv-suggestions-col {
-    width: 100%;
-    order: 2;
-    max-height: 220px;
-    overflow-y: auto;
-  }
-
-  /* Messages: full width, stacked, comfortable spacing */
-  .conv-messages {
-    padding: 12px;
-    max-height: calc(100vh - 220px);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .conv-msg {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 12px;
-    align-items: flex-start;
-  }
-
-  .conv-msg.ai {
-    flex-direction: row;
-  }
-
-  .conv-msg.user {
-    flex-direction: row-reverse;
-  }
-
-  .conv-bubble {
-    max-width: 92%;
-    padding: 10px 14px;
-    border-radius: 14px;
-    box-shadow: 0 6px 18px rgba(2, 6, 23, 0.6);
-  }
-
-  .conv-msg.user .conv-bubble {
-    background: linear-gradient(90deg, #7FFFD4, #00B4D8);
-    color: #041027;
-  }
-
-  .conv-msg.ai .conv-bubble {
-    background: rgba(255, 255, 255, 0.03);
-    color: var(--text-2);
-  }
-
-  /* Input bar: fixed to bottom for easy thumb reach */
-  /* Make input part of normal flow on mobile so suggestions sit below it */
-  .conv-input-bar {
-    position: static;
-    left: auto;
-    right: auto;
-    bottom: auto;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px;
-    border-radius: 12px;
-    backdrop-filter: blur(6px);
-    background: linear-gradient(180deg, rgba(6, 9, 20, 0.45), rgba(6, 9, 20, 0.55));
-    box-shadow: 0 6px 18px rgba(2, 6, 23, 0.45);
-    margin-top: 12px;
-  }
-
-  /* Mic on left */
-  .conv-mic-wrap {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .conv-mic-ring {
-    width: 48px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .conv-mic-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--surface-2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.04);
-  }
-
-  /* Text input container */
-  .conv-text-input {
-    flex: 1 1 auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .conv-text-input input,
-  .conv-text-input textarea {
-    width: 80%;
-    max-width: 80%;
-    border-radius: 20px;
-    padding: 10px 14px;
-    resize: none;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(255, 255, 255, 0.02);
-    color: var(--text);
-    box-shadow: 0 6px 18px rgba(2, 6, 23, 0.6);
-    transition: box-shadow .18s ease, transform .12s ease;
-    font-size: 15px;
-    line-height: 1.3;
-  }
-
-  /* Send button on right */
-  .conv-send-btn {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--grad-main);
-    color: #041027;
-    border: none;
-    box-shadow: 0 8px 24px rgba(0, 180, 216, 0.12);
-  }
-
-  /* Ensure textarea expands and doesn't push layout off-screen */
-  .conv-text-input textarea {
-    max-height: 160px;
-    overflow-y: auto;
-  }
-
-  /* Messages flow naturally; no large bottom padding when input is in flow */
-  .conv-messages {
-    padding-bottom: 24px;
-  }
-
 }
 
 .score-chart-header {
@@ -2135,87 +1799,37 @@
   font-weight: 600;
 }
 
-.score-chart-stat.trend-positive {
-  color: var(--teal);
-  border-color: rgba(127, 255, 212, .25);
-}
-
-.score-chart-stat.trend-negative {
-  color: var(--coral);
-  border-color: rgba(255, 107, 107, .25);
-}
-
-.score-chart-stat.trend-neutral {
-  color: var(--text-3);
-}
+.score-chart-stat.trend-positive { color: var(--teal); border-color: rgba(127, 255, 212, .25); }
+.score-chart-stat.trend-negative { color: var(--coral); border-color: rgba(255, 107, 107, .25); }
+.score-chart-stat.trend-neutral { color: var(--text-3); }
 
 .score-chart-body {
   padding: 10px 14px 12px;
   position: relative;
 }
 
-/* ─ Shared fade-slide animation ────────────────────────── */
-@keyframes fadeSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ─ Responsive tweaks for conv-layout ──────────────────── */
-@media (max-width: 500px) {
-  .scenario-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .difficulty-section {
-    flex-wrap: wrap;
-  }
-
-  .difficulty-pills {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .score-chart-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-/* ─────────────────────────────────────────────────────────── */
-/* SETUP PANEL — collapse/expand animation                     */
-/* ─────────────────────────────────────────────────────────── */
+/* ── Setup Panel ────────────────────────────────────────────── */
 .conv-setup-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
   flex-shrink: 0;
   overflow: hidden;
-  /* Animate height collapse */
   max-height: 600px;
   opacity: 1;
-  transition:
-    max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.35s ease,
-    margin 0.4s ease,
-    padding 0.4s ease;
+  transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.35s ease, margin 0.4s ease, padding 0.4s ease;
 }
 
 .conv-setup-panel.collapsed {
-  max-height: 0 !important;
+  max-height: 0;
   opacity: 0;
   pointer-events: none;
-  margin: 0 !important;
-  padding: 0 !important;
+  margin: 0;
+  padding: 0;
 }
 
-/* ─── Start Conversation Button ─────────────────────────── */
+/* ── Start Conversation Button ──────────────────────────────── */
 .btn-start-conv {
   align-self: stretch;
   padding: 13px 24px;
@@ -2241,11 +1855,9 @@
   box-shadow: 0 8px 30px rgba(127, 255, 212, 0.4);
 }
 
-.btn-start-conv:active {
-  transform: scale(0.98);
-}
+.btn-start-conv:active { transform: scale(0.98); }
 
-/* ─── Session Badge (shown after setup collapses) ────────── */
+/* ── Session Badge ──────────────────────────────────────────── */
 .conv-session-badge {
   display: flex;
   align-items: center;
@@ -2259,18 +1871,11 @@
   color: var(--text-2);
   flex-shrink: 0;
   align-self: flex-start;
-  /* Fade in */
   animation: fadeInUp 0.35s ease both;
 }
 
-.conv-session-badge.hidden {
-  display: none;
-}
-
-.badge-sep {
-  color: var(--border);
-  font-weight: 400;
-}
+.conv-session-badge.hidden { display: none; }
+.badge-sep { color: var(--border); font-weight: 400; }
 
 .badge-change-btn {
   margin-left: 6px;
@@ -2290,7 +1895,7 @@
   border-color: rgba(127, 255, 212, 0.3);
 }
 
-/* ─── 70/30 Split Layout for AI Tutor Active State ────── */
+/* ── Active Conversation Layout (70/30 split) ───────────────── */
 .conv-active-wrapper {
   display: grid;
   grid-template-columns: 70% calc(30% - 15px);
@@ -2303,7 +1908,7 @@
 }
 
 .conv-active-wrapper.suggestions-closed {
-  grid-template-columns: 100%;
+  grid-template-columns: 1fr;
 }
 
 .conv-active-wrapper.suggestions-closed .conv-suggestions-col {
@@ -2317,7 +1922,6 @@
   opacity: 1;
   visibility: visible;
   overflow: hidden;
-  /* Or auto if desired */
   margin-top: 10px;
 }
 
@@ -2337,9 +1941,7 @@
   border: none;
   overflow-y: auto;
   min-height: 0;
-  /* Important for flex scrolling to work properly */
   padding: 15px;
-  /* Add padding to prevent text sticking to edges */
 }
 
 .conv-suggestions-col {
@@ -2347,7 +1949,6 @@
   flex-direction: column;
   background: var(--surface-2);
   border: 1px solid var(--teal);
-  /* Highlighted border */
   border-radius: 16px;
   height: 100%;
   overflow: hidden;
@@ -2401,23 +2002,9 @@
   animation: phraseSlideIn 0.3s ease both;
 }
 
-.suggestion-correction {
-  font-size: 0.9rem;
-  color: var(--text);
-  margin-bottom: 6px;
-}
-
-.suggestion-original {
-  font-size: 0.8rem;
-  color: var(--gold);
-  text-decoration: line-through;
-}
-
-.suggestion-encouragement {
-  font-size: 0.85rem;
-  color: var(--text-2);
-  font-style: italic;
-}
+.suggestion-correction { font-size: 0.9rem; color: var(--text); margin-bottom: 6px; }
+.suggestion-original { font-size: 0.8rem; color: var(--gold); text-decoration: line-through; }
+.suggestion-encouragement { font-size: 0.85rem; color: var(--text-2); font-style: italic; }
 
 .conv-lang-large {
   width: 100%;
@@ -2481,18 +2068,13 @@
   font-size: .75rem;
   font-weight: 600;
   color: var(--text-2);
-  transition: background var(--transition),
-    color var(--transition),
-    box-shadow var(--transition),
-    transform var(--transition);
+  transition: background var(--transition), color var(--transition),
+    box-shadow var(--transition), transform var(--transition);
   cursor: pointer;
   white-space: nowrap;
 }
 
-.practice-diff-pill:hover {
-  color: var(--text);
-  transform: translateY(-1px);
-}
+.practice-diff-pill:hover { color: var(--text); transform: translateY(-1px); }
 
 .practice-diff-pill.active {
   background: var(--grad-main);
@@ -2582,40 +2164,20 @@
 }
 
 @keyframes badgePop {
-  0% {
-    transform: scale(0.6);
-    opacity: 0;
-  }
-
-  70% {
-    transform: scale(1.1);
-  }
-
-  100% {
-    transform: scale(1.0);
-    opacity: 1;
-  }
+  0% { transform: scale(0.6); opacity: 0; }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1.0); opacity: 1; }
 }
 
-/* ── Enhanced phrase-box states ─────────────────────────────── */
-.phrase-box.is-loading .phrase-text {
-  min-height: 42px;
-}
+.phrase-box.is-loading .phrase-text { min-height: 42px; }
 
 .phrase-box.phrase-animate-in {
   animation: phraseSlideIn .35s cubic-bezier(.4, 0, .2, 1) both;
 }
 
 @keyframes phraseSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Loading dots ───────────────────────────────────────────── */
@@ -2637,27 +2199,12 @@
   animation: phraseLoaderBounce 1.3s ease-in-out infinite;
 }
 
-.phrase-loader-dot:nth-child(2) {
-  animation-delay: .15s;
-}
-
-.phrase-loader-dot:nth-child(3) {
-  animation-delay: .30s;
-}
+.phrase-loader-dot:nth-child(2) { animation-delay: .15s; }
+.phrase-loader-dot:nth-child(3) { animation-delay: .30s; }
 
 @keyframes phraseLoaderBounce {
-
-  0%,
-  80%,
-  100% {
-    transform: scale(0.6);
-    opacity: .4;
-  }
-
-  40% {
-    transform: scale(1.0);
-    opacity: 1;
-  }
+  0%, 80%, 100% { transform: scale(0.6); opacity: .4; }
+  40% { transform: scale(1.0); opacity: 1; }
 }
 
 /* ── Translation toggle ─────────────────────────────────────── */
@@ -2683,9 +2230,7 @@
   align-self: flex-start;
 }
 
-.phrase-translation-toggle:hover {
-  color: var(--teal);
-}
+.phrase-translation-toggle:hover { color: var(--teal); }
 
 .phrase-translation-wrap {
   padding: 8px 12px;
@@ -2773,7 +2318,6 @@
   border-color: var(--teal);
   width: 20px;
   border-radius: 4px;
-  transform: none;
 }
 
 .phrase-nav-dot:hover:not(.active) {
@@ -2797,7 +2341,6 @@
   align-items: center;
 }
 
-/* Override existing .btn-new-phrase to fit new layout */
 .btn-new-phrase {
   flex: 1;
   display: flex;
@@ -2814,21 +2357,15 @@
   transition: all var(--transition);
 }
 
-.btn-new-phrase:hover {
-  border-color: var(--teal);
-  color: var(--teal);
-}
+.btn-new-phrase:hover { border-color: var(--teal); color: var(--teal); }
 
 .btn-new-icon {
   display: inline-block;
   transition: transform .35s ease;
 }
 
-.btn-new-phrase:hover .btn-new-icon {
-  transform: rotate(180deg);
-}
+.btn-new-phrase:hover .btn-new-icon { transform: rotate(180deg); }
 
-/* AI Refresh button */
 .btn-phrase-refresh {
   display: flex;
   align-items: center;
@@ -2857,55 +2394,16 @@
   transition: transform .5s ease;
 }
 
-.btn-phrase-refresh.spinning svg {
-  animation: spin .7s linear infinite;
-}
+.btn-phrase-refresh.spinning svg { animation: spin .7s linear infinite; }
+.btn-phrase-refresh:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 
-.btn-phrase-refresh:disabled {
-  opacity: .5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-/* ── Practice header right alignment ────────────────────────── */
 .practice-header-right {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-/* ── Responsive ─────────────────────────────────────────────── */
-@media (max-width: 600px) {
-  .practice-difficulty-row {
-    flex-wrap: wrap;
-  }
-
-  .practice-diff-pills {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .phrase-meta-bar {
-    row-gap: 4px;
-  }
-
-  .phrase-refresh-time {
-    margin-left: 0;
-    width: 100%;
-  }
-
-  .phrase-nav-dot {
-    width: 6px;
-    height: 6px;
-  }
-}
-
-/* ============================================================
-   DASHBOARD — RESPONSIVE ENHANCEMENTS
-   Full mobile/tablet/desktop support
-   ============================================================ */
-
-/* ── Mobile Sidebar Overlay ──────────────────────────────────── */
+/* ── Mobile Sidebar Overlay ─────────────────────────────────── */
 .sidebar-overlay {
   display: none;
   position: fixed;
@@ -2917,43 +2415,91 @@
   transition: opacity var(--transition);
 }
 
-.sidebar-overlay.open {
-  opacity: 1;
+.sidebar-overlay.open { opacity: 1; }
+
+/* ════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ════════════════════════════════════════════════════════════ */
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Tablet: Collapsed Sidebar ───────────────────────────────── */
+@keyframes pulseGlow {
+  from { box-shadow: 0 0 10px rgba(255, 103, 103, 0.4); }
+  to { box-shadow: 0 0 25px rgba(255, 103, 103, 0.7); }
+}
+
+/* ════════════════════════════════════════════════════════════
+   PAGE VISIBILITY — authoritative rules
+   ════════════════════════════════════════════════════════════ */
+
+.page { display: none; }
+.page.active { display: block; }
+
+#page-practice.active { display: block; }
+#page-conversation.active { display: flex; flex-direction: column; }
+
+#page-progress.active,
+#page-chat.active,
+#page-sessions.active,
+#page-leaderboard.active,
+#page-overview.active { display: block; }
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE — consolidated breakpoints
+   ════════════════════════════════════════════════════════════ */
+
+/* ── ≤ 1024px: Tablet ───────────────────────────────────────── */
 @media (max-width: 1024px) {
-  .sidebar {
-    width: 200px;
+  .sidebar { width: 200px; }
+  .user-name, .user-role { font-size: .78rem; }
+
+  .practice-layout { grid-template-columns: 1fr; }
+
+  .charts-grid { grid-template-columns: 1fr; }
+  .chart-wide { grid-column: span 1; }
+}
+
+/* ── ≤ 900px: Narrow tablet ─────────────────────────────────── */
+@media (max-width: 900px) {
+  .conv-active-wrapper {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+    height: 100%;
+    overflow: hidden;
   }
 
-  .user-name,
-  .user-role {
-    font-size: .78rem;
+  .conv-active-wrapper.suggestions-closed {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+  }
+
+  .conv-suggestions-col {
+    height: auto;
+    max-height: 220px;
+    border-top: 1px solid var(--border);
+    border-radius: var(--radius);
+    flex-shrink: 0;
+    overflow-y: auto;
   }
 }
 
-/* ── Mobile: Sidebar becomes a drawer ───────────────────────── */
+/* ── ≤ 768px: Mobile ────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .sidebar-overlay {
-    display: block;
-    pointer-events: none;
-  }
 
-  .sidebar-overlay.open {
-    pointer-events: all;
-  }
+  /* Layout */
+  .dash-body { flex-direction: column; }
+  .dash-main { width: 100%; height: 100dvh; }
 
-  .dash-body {
-    flex-direction: column;
-  }
+  /* Sidebar drawer */
+  .sidebar-overlay { display: block; pointer-events: none; }
+  .sidebar-overlay.open { pointer-events: all; }
 
-  /* Sidebar slides in from left as a drawer */
   .sidebar {
     position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
+    left: 0; top: 0; bottom: 0;
     z-index: 20;
     width: min(260px, 80vw);
     transform: translateX(-100%);
@@ -2968,461 +2514,28 @@
     box-shadow: 8px 0 40px rgba(0, 0, 0, .5);
   }
 
-  /* Show the sidebar toggle in topbar */
-  .sidebar-toggle {
-    display: flex !important;
-  }
+  .sidebar-toggle { display: flex; }
 
-  /* Main content takes full width */
-  .dash-main {
-    width: 100%;
-    height: 100dvh;
-  }
-
-  /* Topbar adjustments */
-  .topbar {
-    padding: 12px 16px;
-    gap: 10px;
-  }
-
-  .page-title {
-    font-size: 1.1rem;
-  }
-
-  .streak-pill {
-    padding: 4px 10px;
-    font-size: .75rem;
-  }
-
-  .online-indicator {
-    display: none;
-    /* Hide on very small screens, save space */
-  }
+  /* Topbar */
+  .topbar { padding: 12px 16px; gap: 10px; }
+  .page-title { font-size: 1.1rem; }
+  .streak-pill { padding: 4px 10px; font-size: .75rem; }
+  .online-indicator { display: none; }
 
   /* Pages */
-  .page {
-    padding: 16px;
-  }
+  .page { padding: 16px; }
+  #page-conversation { padding: 12px 12px 0; height: calc(100dvh - 56px); overflow: hidden; }
+  #page-conversation.active { display: flex; flex-direction: column; }
 
-  /* Practice layout — stack vertically */
-  .practice-layout {
-    grid-template-columns: 1fr;
-  }
-
-  /* Results panel height on mobile */
-  .results-panel {
-    max-height: 65vh;
-  }
-
-  /* Charts grid: single column */
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .chart-wide {
-    grid-column: span 1;
-  }
-
-  .chart-card {
-    height: 280px;
-    max-height: 280px;
-  }
-
-  /* AI conversation layout */
-  .conv-layout {
-    height: calc(100dvh - 56px);
-  }
-
-  .conv-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .conv-controls {
-    width: 100%;
-  }
-
-  .conv-controls select {
-    flex: 1;
-  }
-
-  .conv-msg {
-    max-width: 88%;
-  }
-
-  /* Input bar on mobile */
-  .conv-input-bar {
-    gap: 10px;
-    padding: 10px 14px;
-  }
-
-  .conv-mic-ring {
-    width: 50px;
-    height: 50px;
-  }
-
-  .conv-mic-btn {
-    width: 44px;
-    height: 44px;
-  }
-
-  /* Score circles */
-  .score-circles {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .sub-scores {
-    width: 100%;
-  }
-
-  /* Lang progress grid */
-  .lang-progress-item {
-    grid-template-columns: 90px 1fr 40px;
-    gap: 8px;
-  }
-}
-
-/* ── Small Mobile ─────────────────────────────────────────────── */
-@media (max-width: 480px) {
-  .page {
-    padding: 12px;
-  }
-
-  .practice-card {
-    padding: 18px 16px;
-  }
-
-  .topbar {
-    padding: 10px 12px;
-  }
-
-  .page-title {
-    font-size: 1rem;
-  }
-
-  /* Touch-friendly nav items in sidebar */
-  .nav-item {
-    padding: 12px 14px;
-    min-height: 48px;
-  }
-
-  /* Mic button larger for touch */
-  .mic-btn {
-    width: 80px;
-    height: 80px;
-  }
-
-  .mic-ring {
-    width: 96px;
-    height: 96px;
-  }
-
-  /* Practice card full bleed */
-  .practice-card {
-    border-radius: var(--radius);
-  }
-
-  /* Results panel */
-  .results-panel {
-    padding: 18px 14px;
-    max-height: 60vh;
-  }
-
-  /* Score circles adjust */
-  .score-num {
-    font-size: 1.5rem;
-  }
+  /* Practice */
+  .results-panel { max-height: 65vh; }
 
   /* Charts */
-  .chart-card {
-    height: 240px;
-    max-height: 240px;
-    padding: 16px;
-  }
-
-  .period-btn {
-    padding: 4px 8px;
-    font-size: .7rem;
-  }
-
-  /* Phrase boxes */
-  .phrase-text {
-    font-size: 1.05rem;
-  }
-
-  /* Sub scores grid */
-  .sub-score {
-    grid-template-columns: 60px 1fr 36px;
-    gap: 8px;
-  }
+  .chart-card { height: 280px; max-height: 280px; }
 
   /* Conversation */
-  .conv-text {
-    font-size: .85rem;
-    padding: 10px 14px;
-  }
+  .conv-layout { height: calc(100dvh - 56px); gap: 6px; padding: 0; }
 
-  .conv-input-bar {
-    flex-wrap: wrap;
-    padding: 10px 12px;
-  }
-
-  .conv-text-input {
-    width: 100%;
-    order: -1;
-  }
-
-  .conv-mic-wrap {
-    flex: 1;
-  }
-
-  .conv-send-btn {
-    flex: 1;
-    text-align: center;
-    justify-content: center;
-    display: flex;
-  }
-}
-
-/* ── Leaderboard / Community responsive ──────────────────────── */
-@media (max-width: 768px) {
-
-  /* Any leaderboard table-like structures */
-  .leaderboard-list {
-    gap: 8px;
-  }
-
-  .lb-item {
-    padding: 12px 14px;
-    gap: 12px;
-  }
-
-  /* Chat rooms in community */
-  .community-layout {
-    grid-template-columns: 1fr !important;
-  }
-
-  .rooms-panel {
-    max-height: 200px;
-    overflow-y: auto;
-  }
-}
-
-/* ── Dashboard stat cards ────────────────────────────────────── */
-@media (max-width: 768px) {
-
-  /* Overview stat grid — 2 cols on tablet */
-  .stat-cards {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 12px;
-  }
-}
-
-@media (max-width: 480px) {
-
-  /* Overview stat grid — 2 cols still but tighter */
-  .stat-cards {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 10px;
-  }
-
-  .stat-card {
-    padding: 16px !important;
-  }
-
-  .stat-card-val {
-    font-size: 1.6rem !important;
-  }
-}
-
-/* ── Topbar right section responsive ──────────────────────────── */
-@media (max-width: 480px) {
-  .topbar-right {
-    gap: 8px;
-  }
-
-  .streak-pill {
-    padding: 3px 8px;
-    font-size: .7rem;
-  }
-}
-
-/* ── Practice difficulty pills ────────────────────────────────── */
-@media (max-width: 480px) {
-  .practice-difficulty-row {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .practice-diff-pills {
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 6px;
-  }
-
-  .practice-diff-pill {
-    padding: 5px 12px;
-    font-size: .75rem;
-    min-height: 34px;
-  }
-}
-
-/* ── Scrollbar for mobile ──────────────────────────────────────── */
-@media (max-width: 768px) {
-
-  .dash-main::-webkit-scrollbar,
-  .conv-messages::-webkit-scrollbar,
-  .results-panel::-webkit-scrollbar {
-    width: 3px;
-  }
-}
-
-/* ── Safe area insets (notch phones) ─────────────────────────── */
-@supports (padding: env(safe-area-inset-bottom)) {
-  @media (max-width: 768px) {
-    .conv-input-bar {
-      padding-bottom: calc(10px + env(safe-area-inset-bottom));
-    }
-
-    .topbar {
-      padding-top: calc(12px + env(safe-area-inset-top));
-    }
-  }
-}
-
-/* ── Landscape mobile for dashboard ──────────────────────────── */
-@media (max-width: 768px) and (orientation: landscape) {
-  .conv-layout {
-    height: calc(100dvh - 50px);
-  }
-
-  .practice-layout {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .results-panel {
-    max-height: 80vh;
-  }
-}
-
-/* ── Community / Chat responsive ─────────────────────────────── */
-@media (max-width: 600px) {
-  .chat-rooms-sidebar {
-    width: 100% !important;
-    max-height: 180px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    flex-direction: row !important;
-    flex-wrap: nowrap;
-  }
-}
-
-/* ── Better card hover on touch devices ──────────────────────── */
-@media (hover: none) {
-
-  .feature-card:hover,
-  .nav-item:hover,
-  .btn-hero:hover,
-  .btn-primary:hover {
-    transform: none;
-  }
-
-  /* Active states for touch */
-  .feature-card:active {
-    transform: scale(0.98);
-  }
-
-  .btn-hero:active,
-  .btn-primary:active,
-  .btn-form:active {
-    transform: scale(0.97);
-    opacity: .9;
-  }
-}
-
-/* ── Word chips wrap correctly on mobile ──────────────────────── */
-@media (max-width: 480px) {
-  .words-grid {
-    gap: 6px;
-  }
-
-  .word-chip {
-    padding: 5px 10px;
-    font-size: .75rem;
-  }
-
-  .suggestions-list li {
-    font-size: .8rem;
-    padding: 8px 12px;
-  }
-}
-
-
-/* ============================================================
-   FIX v2: AI Tutor Conversation — Mobile & Tablet Responsive
-   ============================================================ */
-
-/* ── CONV LAYOUT: Core fix — use dvh and proper flex ────────── */
-.conv-layout {
-  display: flex;
-  flex-direction: column;
-  /* Use dvh so mobile browser chrome is handled correctly */
-  height: calc(100dvh - 72px);
-  gap: 8px;
-  overflow: hidden;
-}
-
-/* ── CONV ACTIVE WRAPPER: responsive grid ───────────────────── */
-@media (max-width: 900px) {
-
-  /* On tablet: stack suggestions below chat */
-  .conv-active-wrapper {
-    grid-template-columns: 1fr !important;
-    grid-template-rows: 1fr auto;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  .conv-suggestions-col {
-    height: auto !important;
-    max-height: 220px;
-    border-top: 1px solid var(--border);
-    border-radius: var(--radius);
-    flex-shrink: 0;
-    overflow-y: auto;
-  }
-
-  .conv-active-wrapper.suggestions-closed {
-    grid-template-columns: 1fr !important;
-    grid-template-rows: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-
-  /* Full-screen conversation layout */
-  .conv-layout {
-    height: calc(100dvh - 56px);
-    gap: 6px;
-    padding: 0;
-  }
-
-  /* FIX: Only show as flex when ACTIVE - never override display:none */
-  .page#page-conversation.active {
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* Sizing applied always so layout is ready when activated */
-  .page#page-conversation {
-    padding: 12px 12px 0;
-    height: calc(100dvh - 56px);
-    overflow: hidden;
-  }
-
-  /* Header: compact on mobile */
   .conv-header {
     flex-direction: row;
     align-items: center;
@@ -3432,26 +2545,11 @@
     padding-bottom: 6px;
   }
 
-  .conv-title h2 {
-    font-size: 1rem;
-    margin-bottom: 0;
-  }
+  .conv-title h2 { font-size: 1rem; margin-bottom: 0; }
+  .conv-title p { display: none; }
+  .conv-controls { gap: 6px; }
+  .btn-reset-conv { padding: 6px 12px; font-size: .78rem; }
 
-  .conv-title p {
-    display: none;
-    /* Hide subtitle on mobile to save space */
-  }
-
-  .conv-controls {
-    gap: 6px;
-  }
-
-  .btn-reset-conv {
-    padding: 6px 12px;
-    font-size: .78rem;
-  }
-
-  /* Setup panel: scrollable on mobile if needed */
   .conv-setup-panel {
     max-height: 55dvh;
     overflow-y: auto;
@@ -3459,154 +2557,33 @@
     flex-shrink: 0;
   }
 
-  /* Scenario grid: 2 cols on mobile */
-  .scenario-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 6px;
-  }
-
-  .scenario-card {
-    padding: 10px 6px 8px;
-  }
-
-  .scenario-emoji {
-    font-size: 1.2rem;
-  }
-
-  .scenario-name {
-    font-size: .72rem;
-  }
-
-  .scenario-desc {
-    font-size: .62rem;
-  }
-
-  /* Language selector: full width */
-  .conv-lang-large {
-    max-width: 100%;
-  }
-
-  /* Difficulty pills: centered */
-  .difficulty-section {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .difficulty-pills {
-    width: 100%;
-    justify-content: center;
-  }
-
-  /* Active wrapper: single column, flexible height */
   .conv-active-wrapper {
-    grid-template-columns: 1fr !important;
-    grid-template-rows: 1fr auto !important;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
     flex: 1;
     min-height: 0;
     overflow: hidden;
   }
 
-  .conv-chat-col {
-    min-height: 0;
-    flex: 1;
-    height: 100%;
-  }
+  .conv-chat-col { min-height: 0; flex: 1; height: 100%; }
+  .conv-chat-col .conv-messages { flex: 1; min-height: 0; padding: 12px; }
 
-  .conv-chat-col .conv-messages {
-    flex: 1;
-    min-height: 0;
-    padding: 12px;
-  }
-
-  /* Suggestions column: collapsed strip at bottom */
   .conv-suggestions-col {
-    height: auto !important;
+    height: auto;
     max-height: 180px;
     overflow-y: auto;
     border-radius: var(--radius);
     flex-shrink: 0;
   }
 
-  .suggestions-header {
-    padding: 10px 12px;
-    flex-shrink: 0;
-  }
+  .suggestions-header { padding: 10px 12px; }
+  .suggestions-header h3 { font-size: .9rem; }
+  .suggestions-content { padding: 10px 12px; max-height: 130px; overflow-y: auto; }
 
-  .suggestions-header h3 {
-    font-size: .9rem;
-  }
+  .conv-msg { max-width: 92%; }
+  .conv-text { font-size: .85rem; padding: 10px 12px; }
 
-  .suggestions-content {
-    padding: 10px 12px;
-    max-height: 130px;
-    overflow-y: auto;
-  }
-
-  /* Input bar: better mobile layout */
-  .conv-input-bar {
-    flex-wrap: nowrap;
-    padding: 10px 12px;
-    gap: 8px;
-    flex-shrink: 0;
-    border-radius: 0 0 var(--radius) var(--radius);
-    /* extend input bar to viewport edges */
-    position: relative;
-    left: -12px;
-    /* counter page padding (12px) */
-    width: calc(100% + 24px);
-    max-width: 100vw;
-    box-sizing: border-box;
-  }
-
-  /* Mic: slightly smaller on mobile */
-  .conv-mic-ring {
-    width: 48px;
-    height: 48px;
-    flex-shrink: 0;
-  }
-
-  .conv-mic-btn {
-    width: 44px;
-    height: 44px;
-  }
-
-  .conv-mic-btn svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .conv-mic-label {
-    font-size: .62rem;
-  }
-
-  /* Text input: take remaining space */
-  .conv-text-input {
-    flex: 1;
-    min-width: 0;
-    gap: 6px;
-  }
-
-  .conv-text-input input {
-    font-size: 1rem;
-    /* Prevent iOS zoom */
-    padding: 9px 12px;
-    min-width: 0;
-  }
-
-  .conv-send-btn {
-    padding: 9px 14px;
-    font-size: .8rem;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  /* AI speaking indicator */
-  .conv-ai-speaking {
-    font-size: .72rem;
-    gap: 4px;
-  }
-
-  /* Session badge: wraps on small screens */
+  /* Session badge */
   .conv-session-badge {
     flex-wrap: wrap;
     font-size: .72rem;
@@ -3617,339 +2594,331 @@
     justify-content: center;
   }
 
-  /* Score bar in conversation */
-  #convScoreBar {
-    margin: 6px 8px 0 !important;
-    padding: 8px 12px;
-  }
+  /* Score / chart panels */
+  #convScoreBar { margin: 6px 8px 0; padding: 8px 12px; }
+  #convScoreChartPanel { margin: 6px 8px 0; }
 
-  /* Score chart panel */
-  #convScoreChartPanel {
-    margin: 6px 8px 0 !important;
-  }
-
-  /* Conv messages: bubbles max-width */
-  .conv-msg {
-    max-width: 92%;
-  }
-
-  .conv-text {
-    font-size: .85rem;
-    padding: 10px 12px;
-  }
-}
-
-/* ── Very small phones (≤ 390px) ────────────────────────────── */
-@media (max-width: 390px) {
-  .conv-layout {
-    gap: 4px;
-  }
-
-  .page#page-conversation {
-    padding: 8px 8px 0;
-  }
-
-  .scenario-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 5px;
-  }
-
+  /* Input bar — two-row mobile layout:
+     Row 1: text input (90%) + send button (10%)
+     Row 2: full-width mic hold button
+  */
   .conv-input-bar {
-    padding: 8px;
-    gap: 6px;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    position: relative;
+    left: -12px;
+    width: calc(100% + 24px);
+    box-sizing: border-box;
+    flex-shrink: 0;
   }
 
-  .conv-mic-ring {
-    width: 40px;
-    height: 40px;
+  /* Row 1: text input (90%) + send button (10%) */
+  .conv-text-input {
+    width: 100%;
+    display: flex;
+    gap: 0;
+    order: 1;
+    min-width: 0;
+    flex-shrink: 0;
   }
 
-  .conv-mic-btn {
-    width: 36px;
-    height: 36px;
+  /* Target both input and textarea (JS may swap input→textarea on mobile) */
+  .conv-text-input input,
+  .conv-text-input textarea {
+    flex: 1;
+    height: 46px;
+    min-height: 46px;
+    max-height: 46px;
+    border-radius: 12px 0 0 12px;
+    padding: 0 14px;
+    font-size: 1rem; /* prevent iOS zoom */
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-right: none;
+    color: var(--text);
+    min-width: 0;
+    resize: none;
+    line-height: 46px;
+    overflow: hidden;
+  }
+
+  .conv-text-input input:focus,
+  .conv-text-input textarea:focus {
+    border-color: var(--teal);
+    outline: none;
   }
 
   .conv-send-btn {
-    padding: 8px 10px;
-    font-size: .75rem;
+    width: 52px;
+    min-width: 52px;
+    height: 46px;
+    padding: 0;
+    border-radius: 0 12px 12px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: var(--grad-main);
+    color: #05080f;
+    border: none;
+    font-size: inherit;
   }
 
-  .conv-text-input input {
-    padding: 8px 10px;
-  }
-
-  .conv-title h2 {
-    font-size: .9rem;
-  }
-}
-
-/* ── Landscape mobile ────────────────────────────────────────── */
-@media (max-width: 812px) and (orientation: landscape) {
-  .conv-layout {
-    height: calc(100dvh - 50px);
-  }
-
-  .page#page-conversation.active {
+  /* Row 2: full-width mic hold button */
+  .conv-mic-wrap {
+    width: 100%;
+    order: 2;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
+    padding-top: 0;
+    flex-shrink: 0;
   }
 
-  .page#page-conversation {
-    height: calc(100dvh - 50px);
+  .conv-mic-ring {
+    width: 100%;
+    height: 52px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .conv-setup-panel {
-    max-height: 45dvh;
-    overflow-y: auto;
+  .conv-mic-btn {
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+    background: var(--grad-main);
+    color: #05080f;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    box-shadow: 0 4px 15px rgba(127, 255, 212, 0.2);
+    transition: all 0.2s ease;
+    z-index: 10;
+    padding: 0 20px;
   }
 
-  .scenario-grid {
-    grid-template-columns: repeat(3, 1fr) !important;
+  .conv-mic-btn svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    transform: none;
   }
 
-  .conv-suggestions-col {
-    max-height: 140px;
+  .conv-mic-label {
+    display: block;
+    position: static;
+    transform: none;
+    margin-left: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #05080f;
+    pointer-events: none;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
   }
-}
 
-/* ── Dashboard body overflow fix ─────────────────────────────── */
-.dash-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
+  .conv-mic-ring.recording .conv-mic-btn {
+    background: #FF6767;
+    color: #fff;
+    animation: pulseGlow 1.5s infinite alternate;
+  }
 
-.dash-main {
-  max-width: 100%;
-  overflow-x: hidden;
-}
+  .conv-mic-ring.recording .conv-mic-label { color: #fff; }
 
-/* ── Session items: responsive on mobile ──────────────────────── */
-@media (max-width: 600px) {
+  .conv-ai-speaking {
+    width: 100%;
+    justify-content: center;
+    padding: 4px 0;
+    font-size: 0.75rem;
+    order: 3;
+  }
+
+  /* Chat layout */
+  .chat-layout { grid-template-columns: 1fr; height: auto; }
+  .chat-rooms { flex-direction: row; flex-wrap: wrap; }
+  .chat-main { height: 600px; }
+
+  /* Score circles */
+  .score-circles { flex-direction: column; align-items: center; }
+  .sub-scores { width: 100%; }
+
+  /* Lang progress */
+  .lang-progress-item { grid-template-columns: 90px 1fr 40px; gap: 8px; }
+
+  /* Sessions */
   .session-item {
     grid-template-columns: auto 1fr auto;
     grid-template-rows: auto auto;
     gap: 8px;
   }
+  .sess-dur { display: none; }
 
-  .sess-dur {
-    display: none;
+  /* Leaderboard */
+  .leaderboard-list { gap: 8px; }
+  .lb-item { padding: 12px 14px; gap: 12px; }
+  .community-layout { grid-template-columns: 1fr; }
+  .rooms-panel { max-height: 200px; overflow-y: auto; }
+
+  /* Stats */
+  .stat-cards { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+
+  /* Topbar right */
+  .topbar-right { gap: 8px; }
+
+  /* Difficulty pills */
+  .difficulty-section { flex-wrap: wrap; gap: 8px; }
+  .difficulty-pills { width: 100%; justify-content: center; }
+  .conv-lang-large { max-width: 100%; }
+
+  /* Scenario grid */
+  .scenario-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .scenario-card { padding: 10px 6px 8px; }
+  .scenario-emoji { font-size: 1.2rem; }
+  .scenario-name { font-size: .72rem; }
+  .scenario-desc { font-size: .62rem; }
+
+  /* Scrollbars */
+  .dash-main::-webkit-scrollbar,
+  .conv-messages::-webkit-scrollbar,
+  .results-panel::-webkit-scrollbar { width: 3px; }
+
+  /* Words / suggestions */
+  .words-grid { gap: 6px; }
+  .word-chip { padding: 5px 10px; font-size: .75rem; }
+  .suggestions-list li { font-size: .8rem; padding: 8px 12px; }
+}
+
+/* ── ≤ 600px: Small mobile ──────────────────────────────────── */
+@media (max-width: 600px) {
+  .chat-rooms-sidebar {
+    width: 100%;
+    max-height: 180px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-direction: row;
+    flex-wrap: nowrap;
   }
 }
 
-/* ── Leaderboard on mobile ───────────────────────────────────── */
+/* ── ≤ 480px: Compact mobile ────────────────────────────────── */
 @media (max-width: 480px) {
-  .lb-item {
-    grid-template-columns: 32px 32px 1fr auto;
-    gap: 8px;
-    padding: 12px 14px;
-  }
+  .page { padding: 12px; }
+  .practice-card { padding: 18px 16px; border-radius: var(--radius); }
+  .topbar { padding: 10px 12px; }
+  .page-title { font-size: 1rem; }
+  .streak-pill { padding: 3px 8px; font-size: .7rem; }
+  .topbar-right { gap: 8px; }
 
-  .lb-sessions {
-    display: none;
-  }
+  /* Touch-friendly nav */
+  .nav-item { padding: 12px 14px; min-height: 48px; }
+
+  /* Larger mic for touch */
+  .mic-btn { width: 80px; height: 80px; }
+  .mic-ring { width: 96px; height: 96px; }
+
+  .results-panel { padding: 18px 14px; max-height: 60vh; }
+  .score-num { font-size: 1.5rem; }
+
+  .chart-card { height: 240px; max-height: 240px; padding: 16px; }
+  .period-btn { padding: 4px 8px; font-size: .7rem; }
+
+  .phrase-text { font-size: 1.05rem; }
+
+  .sub-score { grid-template-columns: 60px 1fr 36px; gap: 8px; }
+
+  .conv-text { font-size: .85rem; padding: 10px 14px; }
+
+  .practice-difficulty-row { flex-wrap: wrap; gap: 8px; }
+  .practice-diff-pills { flex-wrap: wrap; justify-content: flex-start; gap: 6px; }
+  .practice-diff-pill { padding: 5px 12px; font-size: .75rem; min-height: 34px; }
+
+  .stat-cards { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat-card { padding: 16px; }
+  .stat-card-val { font-size: 1.6rem; }
+
+  .lb-item { grid-template-columns: 32px 32px 1fr auto; gap: 8px; padding: 12px 14px; }
+  .lb-sessions { display: none; }
+
+  .phrase-meta-bar { row-gap: 4px; }
+  .phrase-refresh-time { margin-left: 0; width: 100%; }
+  .phrase-nav-dot { width: 6px; height: 6px; }
+
+  .score-chart-header { flex-direction: column; align-items: flex-start; }
 }
 
-
-/* ============================================================
-   FIX v3: AI Tutor Input Bar — Proper Mobile Layout
-   ============================================================ */
-
-/* ── MOBILE INPUT BAR: Redesigned for usability ─────────────── */
-
-
-@media (max-width: 768px) {
-
-  /* Input bar: Two rows - Row 1 for Text, Row 2 for full-width Mic */
-  .conv-input-bar {
-    flex-direction: column !important;
-    gap: 12px !important;
-    padding: 16px 12px !important;
-    background: var(--surface) !important;
-    border-top: 1px solid var(--border) !important;
-    border-radius: 0 !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-  }
-
-  /* Row 1: Text input + Send button */
-  .conv-text-input {
-    width: 100% !important;
-    display: flex !important;
-    gap: 8px !important;
-    order: 1 !important;
-  }
-
-  .conv-text-input input {
-    flex: 1 !important;
-    height: 46px !important;
-    /* Slightly taller for mobile */
-    border-radius: 12px !important;
-    padding: 0 16px !important;
-    font-size: 1rem !important;
-    background: var(--surface-2) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text) !important;
-  }
-
-  .conv-send-btn {
-    width: 46px !important;
-    height: 46px !important;
-    padding: 0 !important;
-    border-radius: 12px !important;
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0 !important;
-    background: var(--surface-2) !important;
-    color: var(--teal) !important;
-    border: 1px solid var(--border) !important;
-  }
-
-  /* Row 2: Premium Full-Width Mic Button */
-  .conv-mic-wrap {
-    width: 100% !important;
-    order: 2 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-    padding-top: 4px !important;
-  }
-
-  .conv-mic-ring {
-    width: 100% !important;
-    height: 56px !important;
-    position: relative !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-
-  .conv-mic-btn {
-    width: 100% !important;
-    height: 100% !important;
-    border-radius: 14px !important;
-    background: var(--grad-main) !important;
-    color: #05080f !important;
-    border: none !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding-right: 120px !important;
-    /* Push icon left to make room for text */
-    box-shadow: 0 4px 15px rgba(127, 255, 212, 0.2) !important;
-    transition: all 0.2s ease !important;
-    z-index: 10 !important;
-  }
-
-
-  .conv-mic-btn svg {
-    width: 22px !important;
-    height: 22px !important;
-    /* Create space for the label to the right while keeping the pair centered */
-    transform: translateX(-54px) !important;
-  }
-
-  /* The label text overlay */
-  .conv-mic-label {
-    display: block !important;
-    position: absolute !important;
-    left: 50% !important;
-    top: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    margin-left: 16px !important; /* Balanced offset against the shifted icon */
-    font-size: 0.95rem !important;
-    font-weight: 700 !important;
-    color: #05080f !important;
-    pointer-events: none !important;
-    z-index: 11 !important;
-    white-space: nowrap !important;
-    letter-spacing: 0.02em !important;
-  }
-
-  /* Recording state refinements */
-  .conv-mic-ring.recording .conv-mic-btn {
-    background: #FF6767 !important;
-    color: #fff !important;
-    animation: pulseGlow 1.5s infinite alternate !important;
-  }
-
-  .conv-mic-ring.recording .conv-mic-label {
-    color: #fff !important;
-  }
-
-  @keyframes pulseGlow {
-    from {
-      box-shadow: 0 0 10px rgba(255, 103, 103, 0.4);
-    }
-
-    to {
-      box-shadow: 0 0 25px rgba(255, 103, 103, 0.7);
-    }
-  }
-}
-
-
-/* AI speaking indicator overlay */
-.conv-ai-speaking {
-  width: 100%;
-  justify-content: center;
-  padding: 4px 0;
-  font-size: 0.75rem;
-  order: 3;
-}
-
-
-/* ── Very small phones ───────────────────────────────────────── */
+/* ── ≤ 390px: Tiny phones ───────────────────────────────────── */
 @media (max-width: 390px) {
+  .conv-layout { gap: 4px; }
+  #page-conversation { padding: 8px 8px 0; }
+
+  .scenario-grid { grid-template-columns: repeat(2, 1fr); gap: 5px; }
+
   .conv-input-bar {
-    padding: 8px !important;
-    gap: 6px !important;
-    /* smaller offset for tighter padding */
+    padding: 8px;
+    gap: 8px;
     left: -8px;
     width: calc(100% + 16px);
   }
 
-  .conv-text-input input {
-    height: 44px;
-    padding: 10px 14px !important;
-  }
+  .conv-text-input input,
+  .conv-text-input textarea { height: 44px; min-height: 44px; max-height: 44px; padding: 0 10px; line-height: 44px; }
+  .conv-send-btn { width: 48px; min-width: 48px; height: 44px; }
 
-  .conv-send-btn {
-    height: 44px !important;
-    padding: 0 16px !important;
-  }
+  .conv-mic-ring { height: 48px; }
+  .conv-mic-btn { padding: 0 14px; gap: 8px; }
+  .conv-mic-label { font-size: 0.82rem; }
 
-  .conv-mic-ring {
-    width: 48px !important;
-    height: 48px !important;
-  }
+  .conv-title h2 { font-size: .9rem; }
+}
 
-  .conv-mic-btn {
-    width: 44px !important;
-    height: 44px !important;
+/* ── Landscape mobile ───────────────────────────────────────── */
+@media (max-width: 812px) and (orientation: landscape) {
+  .conv-layout { height: calc(100dvh - 50px); }
+  #page-conversation { height: calc(100dvh - 50px); }
+  #page-conversation.active { display: flex; flex-direction: column; }
+
+  .conv-setup-panel { max-height: 45dvh; overflow-y: auto; }
+  .scenario-grid { grid-template-columns: repeat(3, 1fr); }
+  .conv-suggestions-col { max-height: 140px; }
+
+  .practice-layout { grid-template-columns: 1fr 1fr; }
+  .results-panel { max-height: 80vh; }
+}
+
+/* ── Touch devices ──────────────────────────────────────────── */
+@media (hover: none) {
+  .feature-card:hover, .nav-item:hover,
+  .btn-hero:hover, .btn-primary:hover { transform: none; }
+
+  .feature-card:active { transform: scale(0.98); }
+  .btn-hero:active, .btn-primary:active, .btn-form:active {
+    transform: scale(0.97);
+    opacity: .9;
   }
 }
 
-/* ── Ensure .page hides properly — override any flex leaking ─── */
-/* This is the definitive rule: pages are ALWAYS none unless active */
-.page:not(.active) {
-  display: none !important;
+/* ── Safe area insets (notched phones) ──────────────────────── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  @media (max-width: 768px) {
+    .conv-input-bar { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+    .topbar { padding-top: calc(12px + env(safe-area-inset-top)); }
+  }
 }
 
-/* When active, practice page stays block, conversation is flex */
-#page-practice.active {
-  display: block !important;
-}
-
-#page-conversation.active {
-  display: flex !important;
-  flex-direction: column;
-}
-
-#page-progress.active,
-#page-chat.active,
-#page-sessions.active,
-#page-leaderboard.active,
-#page-overview.active {
-  display: block !important;
+/* ── Chart.js canvas must fill wrapper exactly ──────────────── */
+/* (kept with !important — this targets Chart.js inline style overrides,
+   which is the legitimate use case for !important in CSS) */
+.chart-canvas-wrap canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100% !important;
+  height: 100% !important;
 }
