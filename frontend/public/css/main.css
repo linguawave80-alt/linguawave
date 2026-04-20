@@ -1425,3 +1425,750 @@ footer,
   background: var(--surface-2);
   border-color: var(--border-2);
 }
+/* ============================================================
+   RESPONSIVE ENHANCEMENTS — Full Mobile/Tablet/Desktop
+   Added: better spacing, touch targets, mobile nav, animations
+   ============================================================ */
+
+/* ── Mobile Navigation Menu ──────────────────────────────────
+   The hamburger toggle is already in JS (auth.js/main.js).
+   We add styles for the mobile nav overlay that opens/closes. */
+
+.mobile-nav-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(5, 8, 16, .6);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.mobile-nav-overlay.open {
+  opacity: 1;
+}
+
+/* Mobile drawer — slides in from the right */
+.mobile-nav {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(280px, 85vw);
+  z-index: 110;
+  background: #090e1a;
+  border-left: 1px solid var(--border);
+  padding: 80px 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transform: translateX(100%);
+  transition: transform var(--transition-slow);
+  backdrop-filter: blur(30px);
+  box-shadow: -20px 0 60px rgba(0,0,0,.5);
+}
+
+.mobile-nav.open {
+  transform: translateX(0);
+}
+
+.mobile-nav a,
+.mobile-nav button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-2);
+  transition: background var(--transition), color var(--transition);
+  min-height: 48px; /* Touch-friendly */
+  width: 100%;
+  text-align: left;
+}
+
+.mobile-nav a:hover,
+.mobile-nav button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.mobile-nav .mobile-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 12px 0;
+}
+
+.mobile-nav .btn-primary-mobile {
+  background: var(--grad-main);
+  color: #05080f;
+  font-weight: 700;
+  font-family: var(--font-display);
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(127, 255, 212, .25);
+}
+
+.mobile-nav .btn-primary-mobile:hover {
+  opacity: .9;
+  background: var(--grad-main);
+  color: #05080f;
+}
+
+/* Hamburger active state */
+.hamburger.active span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.hamburger.active span:nth-child(2) {
+  opacity: 0;
+  transform: scaleX(0);
+}
+
+.hamburger.active span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+/* ── Enhanced Feature Cards ───────────────────────────────── */
+.feature-card {
+  /* Override: add glow on hover */
+  position: relative;
+  overflow: hidden;
+}
+
+.feature-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--grad-main);
+  opacity: 0;
+  transition: opacity var(--transition);
+  z-index: 0;
+}
+
+.feature-card:hover::before {
+  opacity: .03;
+}
+
+.feature-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Enhanced hover glow */
+.feature-card:hover {
+  box-shadow: 0 8px 40px rgba(0,0,0,.4), 0 0 0 1px rgba(127,255,212,.15);
+}
+
+/* ── Improved Button Touch Targets ──────────────────────────
+   Ensure all interactive elements meet 44px minimum on mobile */
+@media (max-width: 768px) {
+  .btn-ghost,
+  .btn-primary,
+  .btn-hero,
+  .btn-demo,
+  .btn-form,
+  .btn-google,
+  .tab-btn,
+  .period-btn {
+    min-height: 44px;
+  }
+
+  .btn-ghost,
+  .btn-primary {
+    padding: 10px 20px;
+  }
+}
+
+/* ── Enhanced Hero Section ───────────────────────────────── */
+@media (max-width: 1024px) {
+  .hero {
+    gap: 48px;
+    padding-top: 100px;
+  }
+
+  .hero-title {
+    font-size: clamp(2.4rem, 7vw, 4rem);
+  }
+
+  .hero-badge {
+    margin-bottom: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero {
+    padding: 90px 20px 60px;
+    gap: 40px;
+  }
+
+  .hero-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .hero-title {
+    font-size: clamp(2rem, 8vw, 3rem);
+    text-align: center;
+  }
+
+  .hero-sub {
+    font-size: 1rem;
+    text-align: center;
+    max-width: 100%;
+  }
+
+  .hero-cta {
+    flex-direction: column;
+    width: 100%;
+    max-width: 340px;
+  }
+
+  .btn-hero,
+  .btn-demo {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .hero-stats {
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .stat-num {
+    font-size: 1.3rem;
+  }
+
+  .hero-visual {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+
+  .phone-mockup {
+    width: 280px;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero {
+    padding: 80px 16px 48px;
+  }
+
+  .hero-title {
+    font-size: clamp(1.8rem, 9vw, 2.4rem);
+  }
+
+  .hero-sub {
+    font-size: .95rem;
+  }
+
+  .hero-badge {
+    font-size: .75rem;
+    padding: 5px 14px;
+  }
+
+  .phone-mockup {
+    width: 260px;
+    padding: 18px;
+  }
+
+  .hero-stats {
+    gap: 12px;
+  }
+
+  .stat-divider {
+    height: 24px;
+  }
+}
+
+/* ── Features Section ──────────────────────────────────────── */
+@media (max-width: 900px) {
+  .features-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .features,
+  .how-it-works {
+    padding: 70px 16px;
+  }
+
+  .features-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .feature-card {
+    padding: 24px 20px;
+  }
+
+  .section-header {
+    margin-bottom: 40px;
+  }
+
+  .section-header h2 {
+    font-size: clamp(1.6rem, 6vw, 2.2rem);
+  }
+}
+
+/* ── How It Works Steps ────────────────────────────────────── */
+@media (max-width: 768px) {
+  .steps {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 480px;
+  }
+
+  .step {
+    padding: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    text-align: left;
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+
+  .step-num {
+    font-size: 2.5rem;
+    margin-bottom: 0;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .step-connector {
+    transform: none;
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: center;
+    height: 40px;
+  }
+
+  .connector-line {
+    width: 1px;
+    height: 100%;
+    background: linear-gradient(180deg, rgba(127,255,212,.4), rgba(0,180,216,.4));
+  }
+
+  .connector-line::after {
+    right: -4px;
+    top: auto;
+    bottom: -4px;
+  }
+}
+
+/* ── Auth Modal ─────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .modal-overlay {
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .modal {
+    padding: 28px 20px;
+    border-radius: 28px 28px 0 0;
+    max-width: 100%;
+    width: 100%;
+    transform: translateY(40px);
+  }
+
+  .modal-overlay.open .modal {
+    transform: translateY(0);
+  }
+
+  /* Larger tab buttons for touch */
+  .tab-btn {
+    padding: 10px 8px;
+    font-size: .9rem;
+  }
+
+  /* Larger form inputs on mobile */
+  .form-group input {
+    padding: 14px 16px;
+    font-size: 1rem; /* Prevent iOS zoom */
+  }
+
+  .input-wrap input {
+    font-size: 1rem;
+  }
+
+  .btn-form {
+    padding: 15px;
+    font-size: 1rem;
+    min-height: 50px;
+  }
+
+  .btn-google {
+    padding: 14px;
+    font-size: .95rem;
+    min-height: 50px;
+  }
+}
+
+/* ── Navbar Mobile ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .hamburger {
+    display: flex;
+  }
+
+  .nav-links,
+  .nav-actions {
+    display: none;
+  }
+
+  .nav-inner {
+    height: 60px;
+    gap: 16px;
+  }
+
+  .logo {
+    font-size: 1.1rem;
+  }
+}
+
+/* ── Footer ─────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .footer {
+    padding: 48px 20px 0;
+  }
+
+  .footer-inner {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding-bottom: 32px;
+  }
+
+  .footer-brand p {
+    max-width: 100%;
+  }
+
+  .footer-links {
+    gap: 8px;
+  }
+
+  .footer-links a {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .footer {
+    padding: 40px 16px 0;
+  }
+
+  .footer-bottom {
+    font-size: .7rem;
+    padding: 16px 0;
+  }
+}
+
+/* ── Toast Positioning ──────────────────────────────────────── */
+@media (max-width: 480px) {
+  .toast-container {
+    bottom: 16px;
+    right: 16px;
+    left: 16px;
+  }
+
+  .toast {
+    max-width: 100%;
+  }
+}
+
+/* ── Reset Password Page ─────────────────────────────────────── */
+@media (max-width: 480px) {
+  .reset-card {
+    padding: 32px 20px;
+    border-radius: 24px;
+  }
+}
+
+/* ── Scrollbar Styles ────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(127, 255, 212, .2);
+}
+
+/* ── Glow Enhancements ───────────────────────────────────────── */
+.btn-hero {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.15) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* Subtle inner glow on feature cards */
+.feature-card {
+  box-shadow: 0 1px 0 0 rgba(255,255,255,.04) inset;
+}
+
+.feature-card:hover {
+  box-shadow: 0 8px 40px rgba(0,0,0,.4), 0 0 0 1px rgba(127,255,212,.12), 0 1px 0 0 rgba(255,255,255,.06) inset;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .orb {
+    animation: none;
+  }
+
+  .hero-title .line-reveal,
+  .hero-badge,
+  .hero-sub,
+  .hero-cta,
+  .hero-stats,
+  .hero-visual {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .ring-progress {
+    animation: none;
+    stroke-dashoffset: 50;
+  }
+
+  .float-badge {
+    animation: none;
+  }
+
+  .feature-card {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Landscape Mobile Fix ────────────────────────────────────── */
+@media (max-width: 768px) and (orientation: landscape) {
+  .hero {
+    min-height: auto;
+    padding-top: 80px;
+    flex-direction: row;
+    text-align: left;
+  }
+
+  .hero-content {
+    align-items: flex-start;
+  }
+
+  .hero-title {
+    text-align: left;
+    font-size: clamp(1.6rem, 4vw, 2.5rem);
+  }
+
+  .hero-sub {
+    text-align: left;
+  }
+
+  .hero-cta {
+    flex-direction: row;
+    width: auto;
+  }
+
+  .btn-hero,
+  .btn-demo {
+    width: auto;
+  }
+
+  .phone-mockup {
+    width: 220px;
+  }
+
+  .badge-a,
+  .badge-b {
+    display: none;
+  }
+}
+
+/* ── Tablet layout ───────────────────────────────────────────── */
+@media (min-width: 600px) and (max-width: 900px) {
+  .features-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .hero-cta {
+    flex-direction: row;
+    max-width: none;
+  }
+
+  .btn-hero,
+  .btn-demo {
+    width: auto;
+  }
+}
+
+
+/* ============================================================
+   FIX v2: Index page horizontal scroll & overflow on mobile
+   ============================================================ */
+
+/* ── ROOT OVERFLOW FIX ──────────────────────────────────────── */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* ── ORB SIZE FIX: Oversized fixed-px orbs cause overflow ──── */
+@media (max-width: 768px) {
+  .orb-1 {
+    width: min(400px, 100vw);
+    height: min(400px, 100vw);
+    left: -30%;
+    top: -15%;
+  }
+
+  .orb-2 {
+    width: min(300px, 80vw);
+    height: min(300px, 80vw);
+    right: -20%;
+  }
+
+  .orb-3 {
+    width: min(250px, 70vw);
+    height: min(250px, 70vw);
+  }
+
+  .orb-4 {
+    width: min(200px, 60vw);
+    height: min(200px, 60vw);
+  }
+
+  /* Background grid can also contribute — constrain it */
+  .bg-grid {
+    width: 100vw;
+    overflow: hidden;
+  }
+}
+
+/* ── NAV INNER overflow guard ───────────────────────────────── */
+.nav-inner {
+  overflow: hidden;
+}
+
+/* ── HERO: prevent any child from blowing out width ─────────── */
+@media (max-width: 768px) {
+  .hero {
+    overflow: hidden;
+    width: 100%;
+  }
+
+  .hero-content,
+  .hero-visual {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Phone mockup must not exceed viewport */
+  .phone-mockup {
+    width: min(280px, 85vw);
+  }
+
+  /* Hero stats row: prevent overflow */
+  .hero-stats {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* CTA buttons: never exceed container */
+  .btn-hero,
+  .btn-demo {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 480px) {
+  .phone-mockup {
+    width: min(260px, 88vw);
+    padding: 16px;
+  }
+
+  /* Section containers */
+  .features,
+  .how-it-works {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  /* Feature cards must not overflow */
+  .feature-card {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+/* ── STEP CARDS: prevent overflow on mobile ─────────────────── */
+@media (max-width: 768px) {
+  .steps {
+    width: 100%;
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .step {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+/* ── FOOTER: prevent overflow ───────────────────────────────── */
+@media (max-width: 480px) {
+  .footer-inner {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .footer-bottom span {
+    word-break: break-word;
+  }
+}
+
+/* ── MODAL: fix on very small phones (320px) ────────────────── */
+@media (max-width: 360px) {
+  .modal {
+    padding: 24px 14px;
+  }
+
+  .modal-overlay {
+    padding: 0;
+  }
+
+  .modal {
+    border-radius: 24px 24px 0 0;
+  }
+}
+
+/* ── WAVE CANVAS: responsive width ─────────────────────────── */
+#waveCanvas {
+  width: 100% !important;
+  max-width: 100%;
+}

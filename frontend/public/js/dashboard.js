@@ -611,7 +611,14 @@ const initConversation = () => {
         ${correction ? `<div class="suggestion-correction">✏️ ${correction}</div>` : ''}
         ${encouragement ? `<div class="suggestion-encouragement">💡 ${encouragement}</div>` : ''}
       `;
-      list.prepend(div);
+      // On mobile, append so newest appears at bottom and we can scroll into view.
+      if (window.innerWidth <= 768) {
+        list.appendChild(div);
+        // scroll to show newest
+        list.scrollTop = list.scrollHeight;
+      } else {
+        list.prepend(div);
+      }
 
       // Auto-open panel on new suggestions
       const wrapper = document.getElementById('convActiveWrapper');
@@ -750,6 +757,52 @@ const initConversation = () => {
     closeBtn.addEventListener('click', () => {
       wrapper.classList.add('suggestions-closed');
     });
+  }
+};
+
+// Adapt conversation input/message layout for mobile devices.
+// This replaces the text `input#convTextInput` with a `textarea` on small screens
+// and attaches a lightweight auto-resize handler. Runs only on mobile widths.
+const adaptConversationForMobile = () => {
+  try {
+    if (window.innerWidth > 768) return; // desktop: do nothing
+
+    const container = document.querySelector('.conv-text-input');
+    if (!container) return;
+
+    const existing = document.getElementById('convTextInput');
+    // If already a textarea, just ensure autosize handler is attached
+    if (existing && existing.tagName === 'TEXTAREA') {
+      attachAutoResize(existing);
+      return;
+    }
+
+    // Create textarea preserving id, placeholder and classes
+    const ta = document.createElement('textarea');
+    ta.id = 'convTextInput';
+    ta.placeholder = existing?.placeholder || 'Or type your message here…';
+    ta.className = existing?.className || '';
+    ta.rows = 1;
+    // Replace input with textarea in the DOM without changing id
+    if (existing) existing.replaceWith(ta);
+    else container.insertBefore(ta, container.querySelector('#convSendBtn'));
+
+    // Auto-resize function
+    function attachAutoResize(el) {
+      const resize = () => {
+        el.style.height = 'auto';
+        el.style.height = el.scrollHeight + 'px';
+      };
+      el.addEventListener('input', resize, { passive: true });
+      // initial resize
+      setTimeout(resize, 0);
+    }
+
+    attachAutoResize(ta);
+
+    // Move focus behavior: keep existing key handling intact (initConversation will attach handlers later)
+  } catch (err) {
+    console.error('[adaptConversationForMobile] failed', err);
   }
 };
 
@@ -971,4 +1024,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   initAnalyzeButton();
   initSessionFilters();
   drawLiveWave();
+  // Mobile adaptations for conversation input
+  try { adaptConversationForMobile(); window.addEventListener('resize', () => { if (window.innerWidth <= 768) adaptConversationForMobile(); }); } catch (e) { /* ignore */ }
 });

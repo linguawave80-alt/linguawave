@@ -3,13 +3,17 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>LinguaWave — Speak the World</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap"
     rel="stylesheet" />
+    <style>
+    /* Critical: prevent horizontal scroll before full CSS loads */
+    html, body { max-width: 100%; overflow-x: hidden; }
+  </style>
   <link rel="stylesheet" href="css/main.css" />
 </head>
 
@@ -55,6 +59,18 @@
         <span></span><span></span><span></span>
       </button>
     </div>
+  </nav>
+
+
+  <!-- Mobile Navigation Drawer (responsive) -->
+  <div class="mobile-nav-overlay" id="mobileNavOverlay"></div>
+  <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation">
+    <a href="#features">✨ Features</a>
+    <a href="#how-it-works">⚙️ How It Works</a>
+    <a href="#languages">🌍 Languages</a>
+    <div class="mobile-divider"></div>
+    <button class="btn-ghost" id="mobileLoginBtn">Log In</button>
+    <button class="btn-primary-mobile" id="mobileRegisterBtn">Get Started Free</button>
   </nav>
 
   <!-- Hero Section -->
@@ -358,6 +374,51 @@
     } else {
       document.getElementById('googleOAuthBtn').href = 'https://linguawave-backend-qk64.onrender.com/api/v1/auth/google';
     }
+  </script>
+  <script>
+    // ── Mobile Navigation Toggle (responsive enhancement) ──
+    const hamburger = document.getElementById('hamburger');
+    const mobileNav = document.getElementById('mobileNav');
+    const mobileNavOverlay = document.getElementById('mobileNavOverlay');
+
+    function openMobileNav() {
+      mobileNav.classList.add('open');
+      mobileNavOverlay.classList.add('open');
+      mobileNavOverlay.style.display = 'block';
+      hamburger.classList.add('active');
+      hamburger.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeMobileNav() {
+      mobileNav.classList.remove('open');
+      mobileNavOverlay.classList.remove('open');
+      hamburger.classList.remove('active');
+      hamburger.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = '';
+      setTimeout(() => { mobileNavOverlay.style.display = ''; }, 300);
+    }
+
+    hamburger.addEventListener('click', () => {
+      mobileNav.classList.contains('open') ? closeMobileNav() : openMobileNav();
+    });
+
+    mobileNavOverlay.addEventListener('click', closeMobileNav);
+
+    // Close on link clicks in mobile nav
+    document.querySelectorAll('.mobile-nav a').forEach(link => {
+      link.addEventListener('click', closeMobileNav);
+    });
+
+    // Wire mobile login/register buttons to existing modal buttons
+    document.getElementById('mobileLoginBtn')?.addEventListener('click', () => {
+      closeMobileNav();
+      document.getElementById('openLoginBtn')?.click();
+    });
+    document.getElementById('mobileRegisterBtn')?.addEventListener('click', () => {
+      closeMobileNav();
+      document.getElementById('openRegisterBtn')?.click();
+    });
   </script>
 </body>
 

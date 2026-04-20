@@ -9,6 +9,9 @@
   overflow: hidden;
 }
 
+
+
+
 /* ── Sidebar ────────────────────────────────────────────────── */
 .sidebar {
   width: 240px;
@@ -1938,6 +1941,165 @@
   animation: fadeSlideUp .35s ease both;
 }
 
+/* Mobile-only tweaks for AI Tutor / Conversation */
+@media (max-width: 768px) {
+
+  /* Make conversation area stack vertically and use full width */
+  .conv-active-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .conv-chat-col {
+    width: 100%;
+    order: 1;
+  }
+
+  .conv-suggestions-col {
+    width: 100%;
+    order: 2;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  /* Messages: full width, stacked, comfortable spacing */
+  .conv-messages {
+    padding: 12px;
+    max-height: calc(100vh - 220px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .conv-msg {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+    align-items: flex-start;
+  }
+
+  .conv-msg.ai {
+    flex-direction: row;
+  }
+
+  .conv-msg.user {
+    flex-direction: row-reverse;
+  }
+
+  .conv-bubble {
+    max-width: 92%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    box-shadow: 0 6px 18px rgba(2, 6, 23, 0.6);
+  }
+
+  .conv-msg.user .conv-bubble {
+    background: linear-gradient(90deg, #7FFFD4, #00B4D8);
+    color: #041027;
+  }
+
+  .conv-msg.ai .conv-bubble {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-2);
+  }
+
+  /* Input bar: fixed to bottom for easy thumb reach */
+  /* Make input part of normal flow on mobile so suggestions sit below it */
+  .conv-input-bar {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 12px;
+    backdrop-filter: blur(6px);
+    background: linear-gradient(180deg, rgba(6, 9, 20, 0.45), rgba(6, 9, 20, 0.55));
+    box-shadow: 0 6px 18px rgba(2, 6, 23, 0.45);
+    margin-top: 12px;
+  }
+
+  /* Mic on left */
+  .conv-mic-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .conv-mic-ring {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .conv-mic-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  /* Text input container */
+  .conv-text-input {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .conv-text-input input,
+  .conv-text-input textarea {
+    width: 80%;
+    max-width: 80%;
+    border-radius: 20px;
+    padding: 10px 14px;
+    resize: none;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text);
+    box-shadow: 0 6px 18px rgba(2, 6, 23, 0.6);
+    transition: box-shadow .18s ease, transform .12s ease;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+
+  /* Send button on right */
+  .conv-send-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--grad-main);
+    color: #041027;
+    border: none;
+    box-shadow: 0 8px 24px rgba(0, 180, 216, 0.12);
+  }
+
+  /* Ensure textarea expands and doesn't push layout off-screen */
+  .conv-text-input textarea {
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
+  /* Messages flow naturally; no large bottom padding when input is in flow */
+  .conv-messages {
+    padding-bottom: 24px;
+  }
+
+}
+
 .score-chart-header {
   display: flex;
   align-items: center;
@@ -2143,6 +2305,7 @@
 .conv-active-wrapper.suggestions-closed {
   grid-template-columns: 100%;
 }
+
 .conv-active-wrapper.suggestions-closed .conv-suggestions-col {
   display: none;
 }
@@ -2153,7 +2316,8 @@
   min-height: 0;
   opacity: 1;
   visibility: visible;
-  overflow: hidden; /* Or auto if desired */
+  overflow: hidden;
+  /* Or auto if desired */
   margin-top: 10px;
 }
 
@@ -2172,15 +2336,18 @@
   border-radius: 16px 16px 0 0;
   border: none;
   overflow-y: auto;
-  min-height: 0; /* Important for flex scrolling to work properly */
-  padding: 15px; /* Add padding to prevent text sticking to edges */
+  min-height: 0;
+  /* Important for flex scrolling to work properly */
+  padding: 15px;
+  /* Add padding to prevent text sticking to edges */
 }
 
 .conv-suggestions-col {
   display: flex;
   flex-direction: column;
   background: var(--surface-2);
-  border: 1px solid var(--teal); /* Highlighted border */
+  border: 1px solid var(--teal);
+  /* Highlighted border */
   border-radius: 16px;
   height: 100%;
   overflow: hidden;
@@ -2270,6 +2437,7 @@
   background-position: right 14px center;
   background-size: 12px auto;
 }
+
 .conv-lang-large option {
   background: var(--bg-2);
   color: var(--text);
@@ -2730,4 +2898,1058 @@
     width: 6px;
     height: 6px;
   }
+}
+
+/* ============================================================
+   DASHBOARD — RESPONSIVE ENHANCEMENTS
+   Full mobile/tablet/desktop support
+   ============================================================ */
+
+/* ── Mobile Sidebar Overlay ──────────────────────────────────── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  background: rgba(5, 8, 16, .6);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.sidebar-overlay.open {
+  opacity: 1;
+}
+
+/* ── Tablet: Collapsed Sidebar ───────────────────────────────── */
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 200px;
+  }
+
+  .user-name,
+  .user-role {
+    font-size: .78rem;
+  }
+}
+
+/* ── Mobile: Sidebar becomes a drawer ───────────────────────── */
+@media (max-width: 768px) {
+  .sidebar-overlay {
+    display: block;
+    pointer-events: none;
+  }
+
+  .sidebar-overlay.open {
+    pointer-events: all;
+  }
+
+  .dash-body {
+    flex-direction: column;
+  }
+
+  /* Sidebar slides in from left as a drawer */
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 20;
+    width: min(260px, 80vw);
+    transform: translateX(-100%);
+    transition: transform var(--transition-slow);
+    padding-top: 16px;
+    height: 100dvh;
+    overflow-y: auto;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 8px 0 40px rgba(0, 0, 0, .5);
+  }
+
+  /* Show the sidebar toggle in topbar */
+  .sidebar-toggle {
+    display: flex !important;
+  }
+
+  /* Main content takes full width */
+  .dash-main {
+    width: 100%;
+    height: 100dvh;
+  }
+
+  /* Topbar adjustments */
+  .topbar {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+
+  .page-title {
+    font-size: 1.1rem;
+  }
+
+  .streak-pill {
+    padding: 4px 10px;
+    font-size: .75rem;
+  }
+
+  .online-indicator {
+    display: none;
+    /* Hide on very small screens, save space */
+  }
+
+  /* Pages */
+  .page {
+    padding: 16px;
+  }
+
+  /* Practice layout — stack vertically */
+  .practice-layout {
+    grid-template-columns: 1fr;
+  }
+
+  /* Results panel height on mobile */
+  .results-panel {
+    max-height: 65vh;
+  }
+
+  /* Charts grid: single column */
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-wide {
+    grid-column: span 1;
+  }
+
+  .chart-card {
+    height: 280px;
+    max-height: 280px;
+  }
+
+  /* AI conversation layout */
+  .conv-layout {
+    height: calc(100dvh - 56px);
+  }
+
+  .conv-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .conv-controls {
+    width: 100%;
+  }
+
+  .conv-controls select {
+    flex: 1;
+  }
+
+  .conv-msg {
+    max-width: 88%;
+  }
+
+  /* Input bar on mobile */
+  .conv-input-bar {
+    gap: 10px;
+    padding: 10px 14px;
+  }
+
+  .conv-mic-ring {
+    width: 50px;
+    height: 50px;
+  }
+
+  .conv-mic-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Score circles */
+  .score-circles {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .sub-scores {
+    width: 100%;
+  }
+
+  /* Lang progress grid */
+  .lang-progress-item {
+    grid-template-columns: 90px 1fr 40px;
+    gap: 8px;
+  }
+}
+
+/* ── Small Mobile ─────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .page {
+    padding: 12px;
+  }
+
+  .practice-card {
+    padding: 18px 16px;
+  }
+
+  .topbar {
+    padding: 10px 12px;
+  }
+
+  .page-title {
+    font-size: 1rem;
+  }
+
+  /* Touch-friendly nav items in sidebar */
+  .nav-item {
+    padding: 12px 14px;
+    min-height: 48px;
+  }
+
+  /* Mic button larger for touch */
+  .mic-btn {
+    width: 80px;
+    height: 80px;
+  }
+
+  .mic-ring {
+    width: 96px;
+    height: 96px;
+  }
+
+  /* Practice card full bleed */
+  .practice-card {
+    border-radius: var(--radius);
+  }
+
+  /* Results panel */
+  .results-panel {
+    padding: 18px 14px;
+    max-height: 60vh;
+  }
+
+  /* Score circles adjust */
+  .score-num {
+    font-size: 1.5rem;
+  }
+
+  /* Charts */
+  .chart-card {
+    height: 240px;
+    max-height: 240px;
+    padding: 16px;
+  }
+
+  .period-btn {
+    padding: 4px 8px;
+    font-size: .7rem;
+  }
+
+  /* Phrase boxes */
+  .phrase-text {
+    font-size: 1.05rem;
+  }
+
+  /* Sub scores grid */
+  .sub-score {
+    grid-template-columns: 60px 1fr 36px;
+    gap: 8px;
+  }
+
+  /* Conversation */
+  .conv-text {
+    font-size: .85rem;
+    padding: 10px 14px;
+  }
+
+  .conv-input-bar {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+
+  .conv-text-input {
+    width: 100%;
+    order: -1;
+  }
+
+  .conv-mic-wrap {
+    flex: 1;
+  }
+
+  .conv-send-btn {
+    flex: 1;
+    text-align: center;
+    justify-content: center;
+    display: flex;
+  }
+}
+
+/* ── Leaderboard / Community responsive ──────────────────────── */
+@media (max-width: 768px) {
+
+  /* Any leaderboard table-like structures */
+  .leaderboard-list {
+    gap: 8px;
+  }
+
+  .lb-item {
+    padding: 12px 14px;
+    gap: 12px;
+  }
+
+  /* Chat rooms in community */
+  .community-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .rooms-panel {
+    max-height: 200px;
+    overflow-y: auto;
+  }
+}
+
+/* ── Dashboard stat cards ────────────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* Overview stat grid — 2 cols on tablet */
+  .stat-cards {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+
+  /* Overview stat grid — 2 cols still but tighter */
+  .stat-cards {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px;
+  }
+
+  .stat-card {
+    padding: 16px !important;
+  }
+
+  .stat-card-val {
+    font-size: 1.6rem !important;
+  }
+}
+
+/* ── Topbar right section responsive ──────────────────────────── */
+@media (max-width: 480px) {
+  .topbar-right {
+    gap: 8px;
+  }
+
+  .streak-pill {
+    padding: 3px 8px;
+    font-size: .7rem;
+  }
+}
+
+/* ── Practice difficulty pills ────────────────────────────────── */
+@media (max-width: 480px) {
+  .practice-difficulty-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .practice-diff-pills {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .practice-diff-pill {
+    padding: 5px 12px;
+    font-size: .75rem;
+    min-height: 34px;
+  }
+}
+
+/* ── Scrollbar for mobile ──────────────────────────────────────── */
+@media (max-width: 768px) {
+
+  .dash-main::-webkit-scrollbar,
+  .conv-messages::-webkit-scrollbar,
+  .results-panel::-webkit-scrollbar {
+    width: 3px;
+  }
+}
+
+/* ── Safe area insets (notch phones) ─────────────────────────── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  @media (max-width: 768px) {
+    .conv-input-bar {
+      padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+
+    .topbar {
+      padding-top: calc(12px + env(safe-area-inset-top));
+    }
+  }
+}
+
+/* ── Landscape mobile for dashboard ──────────────────────────── */
+@media (max-width: 768px) and (orientation: landscape) {
+  .conv-layout {
+    height: calc(100dvh - 50px);
+  }
+
+  .practice-layout {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .results-panel {
+    max-height: 80vh;
+  }
+}
+
+/* ── Community / Chat responsive ─────────────────────────────── */
+@media (max-width: 600px) {
+  .chat-rooms-sidebar {
+    width: 100% !important;
+    max-height: 180px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+  }
+}
+
+/* ── Better card hover on touch devices ──────────────────────── */
+@media (hover: none) {
+
+  .feature-card:hover,
+  .nav-item:hover,
+  .btn-hero:hover,
+  .btn-primary:hover {
+    transform: none;
+  }
+
+  /* Active states for touch */
+  .feature-card:active {
+    transform: scale(0.98);
+  }
+
+  .btn-hero:active,
+  .btn-primary:active,
+  .btn-form:active {
+    transform: scale(0.97);
+    opacity: .9;
+  }
+}
+
+/* ── Word chips wrap correctly on mobile ──────────────────────── */
+@media (max-width: 480px) {
+  .words-grid {
+    gap: 6px;
+  }
+
+  .word-chip {
+    padding: 5px 10px;
+    font-size: .75rem;
+  }
+
+  .suggestions-list li {
+    font-size: .8rem;
+    padding: 8px 12px;
+  }
+}
+
+
+/* ============================================================
+   FIX v2: AI Tutor Conversation — Mobile & Tablet Responsive
+   ============================================================ */
+
+/* ── CONV LAYOUT: Core fix — use dvh and proper flex ────────── */
+.conv-layout {
+  display: flex;
+  flex-direction: column;
+  /* Use dvh so mobile browser chrome is handled correctly */
+  height: calc(100dvh - 72px);
+  gap: 8px;
+  overflow: hidden;
+}
+
+/* ── CONV ACTIVE WRAPPER: responsive grid ───────────────────── */
+@media (max-width: 900px) {
+
+  /* On tablet: stack suggestions below chat */
+  .conv-active-wrapper {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr auto;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .conv-suggestions-col {
+    height: auto !important;
+    max-height: 220px;
+    border-top: 1px solid var(--border);
+    border-radius: var(--radius);
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+
+  .conv-active-wrapper.suggestions-closed {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+
+  /* Full-screen conversation layout */
+  .conv-layout {
+    height: calc(100dvh - 56px);
+    gap: 6px;
+    padding: 0;
+  }
+
+  /* FIX: Only show as flex when ACTIVE - never override display:none */
+  .page#page-conversation.active {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Sizing applied always so layout is ready when activated */
+  .page#page-conversation {
+    padding: 12px 12px 0;
+    height: calc(100dvh - 56px);
+    overflow: hidden;
+  }
+
+  /* Header: compact on mobile */
+  .conv-header {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
+    padding-bottom: 6px;
+  }
+
+  .conv-title h2 {
+    font-size: 1rem;
+    margin-bottom: 0;
+  }
+
+  .conv-title p {
+    display: none;
+    /* Hide subtitle on mobile to save space */
+  }
+
+  .conv-controls {
+    gap: 6px;
+  }
+
+  .btn-reset-conv {
+    padding: 6px 12px;
+    font-size: .78rem;
+  }
+
+  /* Setup panel: scrollable on mobile if needed */
+  .conv-setup-panel {
+    max-height: 55dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-shrink: 0;
+  }
+
+  /* Scenario grid: 2 cols on mobile */
+  .scenario-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px;
+  }
+
+  .scenario-card {
+    padding: 10px 6px 8px;
+  }
+
+  .scenario-emoji {
+    font-size: 1.2rem;
+  }
+
+  .scenario-name {
+    font-size: .72rem;
+  }
+
+  .scenario-desc {
+    font-size: .62rem;
+  }
+
+  /* Language selector: full width */
+  .conv-lang-large {
+    max-width: 100%;
+  }
+
+  /* Difficulty pills: centered */
+  .difficulty-section {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .difficulty-pills {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Active wrapper: single column, flexible height */
+  .conv-active-wrapper {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr auto !important;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .conv-chat-col {
+    min-height: 0;
+    flex: 1;
+    height: 100%;
+  }
+
+  .conv-chat-col .conv-messages {
+    flex: 1;
+    min-height: 0;
+    padding: 12px;
+  }
+
+  /* Suggestions column: collapsed strip at bottom */
+  .conv-suggestions-col {
+    height: auto !important;
+    max-height: 180px;
+    overflow-y: auto;
+    border-radius: var(--radius);
+    flex-shrink: 0;
+  }
+
+  .suggestions-header {
+    padding: 10px 12px;
+    flex-shrink: 0;
+  }
+
+  .suggestions-header h3 {
+    font-size: .9rem;
+  }
+
+  .suggestions-content {
+    padding: 10px 12px;
+    max-height: 130px;
+    overflow-y: auto;
+  }
+
+  /* Input bar: better mobile layout */
+  .conv-input-bar {
+    flex-wrap: nowrap;
+    padding: 10px 12px;
+    gap: 8px;
+    flex-shrink: 0;
+    border-radius: 0 0 var(--radius) var(--radius);
+    /* extend input bar to viewport edges */
+    position: relative;
+    left: -12px;
+    /* counter page padding (12px) */
+    width: calc(100% + 24px);
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+
+  /* Mic: slightly smaller on mobile */
+  .conv-mic-ring {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+  }
+
+  .conv-mic-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .conv-mic-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .conv-mic-label {
+    font-size: .62rem;
+  }
+
+  /* Text input: take remaining space */
+  .conv-text-input {
+    flex: 1;
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .conv-text-input input {
+    font-size: 1rem;
+    /* Prevent iOS zoom */
+    padding: 9px 12px;
+    min-width: 0;
+  }
+
+  .conv-send-btn {
+    padding: 9px 14px;
+    font-size: .8rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* AI speaking indicator */
+  .conv-ai-speaking {
+    font-size: .72rem;
+    gap: 4px;
+  }
+
+  /* Session badge: wraps on small screens */
+  .conv-session-badge {
+    flex-wrap: wrap;
+    font-size: .72rem;
+    padding: 6px 10px;
+    gap: 5px;
+    border-radius: var(--radius);
+    align-self: stretch;
+    justify-content: center;
+  }
+
+  /* Score bar in conversation */
+  #convScoreBar {
+    margin: 6px 8px 0 !important;
+    padding: 8px 12px;
+  }
+
+  /* Score chart panel */
+  #convScoreChartPanel {
+    margin: 6px 8px 0 !important;
+  }
+
+  /* Conv messages: bubbles max-width */
+  .conv-msg {
+    max-width: 92%;
+  }
+
+  .conv-text {
+    font-size: .85rem;
+    padding: 10px 12px;
+  }
+}
+
+/* ── Very small phones (≤ 390px) ────────────────────────────── */
+@media (max-width: 390px) {
+  .conv-layout {
+    gap: 4px;
+  }
+
+  .page#page-conversation {
+    padding: 8px 8px 0;
+  }
+
+  .scenario-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 5px;
+  }
+
+  .conv-input-bar {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .conv-mic-ring {
+    width: 40px;
+    height: 40px;
+  }
+
+  .conv-mic-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .conv-send-btn {
+    padding: 8px 10px;
+    font-size: .75rem;
+  }
+
+  .conv-text-input input {
+    padding: 8px 10px;
+  }
+
+  .conv-title h2 {
+    font-size: .9rem;
+  }
+}
+
+/* ── Landscape mobile ────────────────────────────────────────── */
+@media (max-width: 812px) and (orientation: landscape) {
+  .conv-layout {
+    height: calc(100dvh - 50px);
+  }
+
+  .page#page-conversation.active {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .page#page-conversation {
+    height: calc(100dvh - 50px);
+  }
+
+  .conv-setup-panel {
+    max-height: 45dvh;
+    overflow-y: auto;
+  }
+
+  .scenario-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  .conv-suggestions-col {
+    max-height: 140px;
+  }
+}
+
+/* ── Dashboard body overflow fix ─────────────────────────────── */
+.dash-body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.dash-main {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* ── Session items: responsive on mobile ──────────────────────── */
+@media (max-width: 600px) {
+  .session-item {
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 8px;
+  }
+
+  .sess-dur {
+    display: none;
+  }
+}
+
+/* ── Leaderboard on mobile ───────────────────────────────────── */
+@media (max-width: 480px) {
+  .lb-item {
+    grid-template-columns: 32px 32px 1fr auto;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+
+  .lb-sessions {
+    display: none;
+  }
+}
+
+
+/* ============================================================
+   FIX v3: AI Tutor Input Bar — Proper Mobile Layout
+   ============================================================ */
+
+/* ── MOBILE INPUT BAR: Redesigned for usability ─────────────── */
+
+
+@media (max-width: 768px) {
+
+  /* Input bar: Two rows - Row 1 for Text, Row 2 for full-width Mic */
+  .conv-input-bar {
+    flex-direction: column !important;
+    gap: 12px !important;
+    padding: 16px 12px !important;
+    background: var(--surface) !important;
+    border-top: 1px solid var(--border) !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Row 1: Text input + Send button */
+  .conv-text-input {
+    width: 100% !important;
+    display: flex !important;
+    gap: 8px !important;
+    order: 1 !important;
+  }
+
+  .conv-text-input input {
+    flex: 1 !important;
+    height: 46px !important;
+    /* Slightly taller for mobile */
+    border-radius: 12px !important;
+    padding: 0 16px !important;
+    font-size: 1rem !important;
+    background: var(--surface-2) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+  }
+
+  .conv-send-btn {
+    width: 46px !important;
+    height: 46px !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0 !important;
+    background: var(--surface-2) !important;
+    color: var(--teal) !important;
+    border: 1px solid var(--border) !important;
+  }
+
+  /* Row 2: Premium Full-Width Mic Button */
+  .conv-mic-wrap {
+    width: 100% !important;
+    order: 2 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding-top: 4px !important;
+  }
+
+  .conv-mic-ring {
+    width: 100% !important;
+    height: 56px !important;
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .conv-mic-btn {
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 14px !important;
+    background: var(--grad-main) !important;
+    color: #05080f !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding-right: 120px !important;
+    /* Push icon left to make room for text */
+    box-shadow: 0 4px 15px rgba(127, 255, 212, 0.2) !important;
+    transition: all 0.2s ease !important;
+    z-index: 10 !important;
+  }
+
+
+  .conv-mic-btn svg {
+    width: 22px !important;
+    height: 22px !important;
+    /* Create space for the label to the right while keeping the pair centered */
+    transform: translateX(-54px) !important;
+  }
+
+  /* The label text overlay */
+  .conv-mic-label {
+    display: block !important;
+    position: absolute !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    margin-left: 16px !important; /* Balanced offset against the shifted icon */
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    color: #05080f !important;
+    pointer-events: none !important;
+    z-index: 11 !important;
+    white-space: nowrap !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  /* Recording state refinements */
+  .conv-mic-ring.recording .conv-mic-btn {
+    background: #FF6767 !important;
+    color: #fff !important;
+    animation: pulseGlow 1.5s infinite alternate !important;
+  }
+
+  .conv-mic-ring.recording .conv-mic-label {
+    color: #fff !important;
+  }
+
+  @keyframes pulseGlow {
+    from {
+      box-shadow: 0 0 10px rgba(255, 103, 103, 0.4);
+    }
+
+    to {
+      box-shadow: 0 0 25px rgba(255, 103, 103, 0.7);
+    }
+  }
+}
+
+
+/* AI speaking indicator overlay */
+.conv-ai-speaking {
+  width: 100%;
+  justify-content: center;
+  padding: 4px 0;
+  font-size: 0.75rem;
+  order: 3;
+}
+
+
+/* ── Very small phones ───────────────────────────────────────── */
+@media (max-width: 390px) {
+  .conv-input-bar {
+    padding: 8px !important;
+    gap: 6px !important;
+    /* smaller offset for tighter padding */
+    left: -8px;
+    width: calc(100% + 16px);
+  }
+
+  .conv-text-input input {
+    height: 44px;
+    padding: 10px 14px !important;
+  }
+
+  .conv-send-btn {
+    height: 44px !important;
+    padding: 0 16px !important;
+  }
+
+  .conv-mic-ring {
+    width: 48px !important;
+    height: 48px !important;
+  }
+
+  .conv-mic-btn {
+    width: 44px !important;
+    height: 44px !important;
+  }
+}
+
+/* ── Ensure .page hides properly — override any flex leaking ─── */
+/* This is the definitive rule: pages are ALWAYS none unless active */
+.page:not(.active) {
+  display: none !important;
+}
+
+/* When active, practice page stays block, conversation is flex */
+#page-practice.active {
+  display: block !important;
+}
+
+#page-conversation.active {
+  display: flex !important;
+  flex-direction: column;
+}
+
+#page-progress.active,
+#page-chat.active,
+#page-sessions.active,
+#page-leaderboard.active,
+#page-overview.active {
+  display: block !important;
 }

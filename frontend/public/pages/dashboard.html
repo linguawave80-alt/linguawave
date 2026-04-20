@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>LinguaWave — Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,6 +14,12 @@
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <link rel="stylesheet" href="/css/main.css" />
   <link rel="stylesheet" href="/css/dashboard.css" />
+  <style>
+    /* Critical: prevent horizontal scroll */
+    html, body { max-width: 100%; overflow-x: hidden; }
+    .dash-body { max-width: 100vw; overflow-x: hidden; }
+  </style>
+
 </head>
 
 <body class="dash-body">
@@ -25,6 +31,9 @@
     <div class="orb orb-3"></div>
     <div class="orb orb-4"></div>
   </div>
+
+  <!-- Sidebar overlay for mobile -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
@@ -473,13 +482,19 @@
                     </svg>
                   </button>
                 </div>
-                <span class="conv-mic-label" id="convMicLabel">Hold to speak</span>
+                <span class="conv-mic-label" id="convMicLabel"></span>
               </div>
 
               <!-- Text input fallback -->
               <div class="conv-text-input">
                 <input type="text" id="convTextInput" placeholder="Or type your message here…" />
-                <button class="conv-send-btn" id="convSendBtn">Send</button>
+                <button class="conv-send-btn" id="convSendBtn" aria-label="Send message">
+                  <!-- Telegram-style paper plane icon -->
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22 2L11 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="currentColor" opacity="0.95"/>
+                  </svg>
+                </button>
               </div>
 
               <!-- AI Speaking indicator -->
@@ -667,6 +682,39 @@
   <script src="/js/scenarioPicker.js"></script>
   <script src="/js/scoreChart.js"></script>
   <script src="/js/dailyPhrases.js"></script>
+  <script>
+    // ── Dashboard Mobile Sidebar Toggle (responsive) ──
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+    function openSidebar() {
+      sidebar.classList.add('open');
+      sidebarOverlay.classList.add('open');
+      sidebarOverlay.style.display = 'block';
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeSidebar() {
+      sidebar.classList.remove('open');
+      sidebarOverlay.classList.remove('open');
+      document.body.style.overflow = '';
+      setTimeout(() => { sidebarOverlay.style.display = ''; }, 300);
+    }
+
+    sidebarToggle?.addEventListener('click', () => {
+      sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+
+    sidebarOverlay?.addEventListener('click', closeSidebar);
+
+    // Close sidebar when a nav item is clicked on mobile
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        if (window.innerWidth <= 768) closeSidebar();
+      });
+    });
+  </script>
 </body>
 
 </html>
