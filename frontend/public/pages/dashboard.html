@@ -72,6 +72,9 @@
       <a href="#" class="nav-item" data-page="leaderboard">
         <span class="nav-icon">🏆</span><span>Leaderboard</span>
       </a>
+      <a href="https://deluxe-chaja-074488.netlify.app" class="nav-item external-link signflow-item" target="_blank" rel="noopener noreferrer">
+        <span class="nav-icon">✨</span><span>SignFlow AI</span>
+      </a>
     </nav>
     <div class="sidebar-bottom">
       <div class="user-pill" id="userPill">
@@ -674,6 +677,15 @@
 
   <!-- Toast -->
   <div class="toast-container" id="toastContainer"></div>
+
+  <!-- SignFlow Cloud Notification -->
+  <div id="signflowNotification" class="cloud-notification hidden">
+    <div class="notification-content">
+      <span class="notification-icon">☁️</span>
+      <span class="notification-text">SignFlow Meet coming live soon 🚀</span>
+    </div>
+    <button id="closeNotification" class="notification-close" aria-label="Close notification">✕</button>
+  </div>
 
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>

@@ -125,8 +125,12 @@ const bootstrapAuth = async () => {
 const initNavigation = () => {
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
+      // Logic for external links: let browser handle it (e.g., target="_blank")
+      if (item.classList.contains('external-link') || item.getAttribute('target') === '_blank') return;
+
       e.preventDefault();
       const page = item.dataset.page;
+      if (!page) return;
       switchPage(page);
       if (page === 'practice' && window.DailyPhrases) drawLiveWave();
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1150,6 +1154,30 @@ const appendSystemMessage = (text) => {
 
 const initSessionFilters = () => el('sessionLangFilter')?.addEventListener('change', () => loadSessions(1));
 
+const initCloudNotification = () => {
+  const notif = el('signflowNotification');
+  const close = el('closeNotification');
+  if (!notif || !close) return;
+
+  // Don't show if user closed it before
+  if (localStorage.getItem('signflow_meet_notif_closed')) return;
+
+  // Show automatically with a slight delay
+  setTimeout(() => {
+    notif.classList.remove('hidden');
+  }, 1500);
+
+  close.addEventListener('click', () => {
+    notif.classList.add('fade-out');
+    // Store in localStorage
+    localStorage.setItem('signflow_meet_notif_closed', 'true');
+    // Remove from DOM after animation
+    setTimeout(() => {
+      notif.classList.add('hidden');
+    }, 500);
+  });
+};
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   const user = await bootstrapAuth();
@@ -1160,5 +1188,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   initMicButton();
   initAnalyzeButton();
   initSessionFilters();
+  initCloudNotification();
   drawLiveWave();
 });

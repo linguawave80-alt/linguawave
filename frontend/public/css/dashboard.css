@@ -2922,3 +2922,150 @@
   width: 100% !important;
   height: 100% !important;
 }
+
+/* ── SignFlow AI Sidebar Item ────────────────────────────────── */
+.signflow-item {
+  transition: all var(--transition) !important;
+  border: 1px solid transparent;
+}
+
+.signflow-item:hover {
+  background: linear-gradient(90deg, rgba(167, 139, 250, 0.15), rgba(236, 72, 153, 0.15)) !important;
+  color: #fff !important;
+  box-shadow: 0 0 20px rgba(167, 139, 250, 0.25);
+  border-color: rgba(167, 139, 250, 0.3) !important;
+  transform: translateX(4px);
+}
+
+.signflow-item:hover .nav-icon {
+  filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.8));
+  animation: sparkle 1.5s infinite;
+}
+
+@keyframes sparkle {
+  0%, 100% { transform: scale(1) rotate(0); opacity: 1; }
+  50% { transform: scale(1.2) rotate(15deg); opacity: 0.8; }
+}
+
+/* ── Cloud Notification ───────────────────────────────────────── */
+.cloud-notification {
+  position: fixed;
+  top: 80px; /* Below the topbar */
+  right: 24px;
+  z-index: 1000;
+  padding: 14px 24px;
+  border-radius: 50px;
+  background: linear-gradient(135deg, 
+      rgba(167, 139, 250, 0.85), 
+      rgba(236, 72, 153, 0.85), 
+      rgba(6, 182, 212, 0.85)
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 10px 40px rgba(0, 0, 0, 0.3),
+    0 0 25px rgba(167, 139, 250, 0.4),
+    inset 0 0 10px rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* Ensure no block interaction if needed, but requirements say "Should NOT block user interaction" */
+/* Pointer-events: auto is fine since it's small and in the corner. */
+
+.cloud-notification.hidden {
+  display: none;
+}
+
+/* Entry Animation */
+.cloud-notification:not(.hidden) {
+  animation: 
+    cloudSlideIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+    cloudFloat 4s ease-in-out infinite;
+}
+
+/* Exit Animation */
+.cloud-notification.fade-out {
+  animation: cloudFadeOut 0.5s ease-in forwards !important;
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notification-icon {
+  font-size: 1.3rem;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
+}
+
+.notification-close {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.notification-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: rotate(90deg);
+}
+
+@keyframes cloudSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100px) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes cloudFadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.8) translateY(-20px);
+  }
+}
+
+@keyframes cloudFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .cloud-notification {
+    top: auto;
+    bottom: 24px;
+    right: 16px;
+    left: 16px;
+    justify-content: center;
+    padding: 12px 20px;
+    font-size: 0.8rem;
+  }
+}
