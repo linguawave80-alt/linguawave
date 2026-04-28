@@ -106,10 +106,12 @@ const ApiClient = (() => {
 
     // ── Auth ────────────────────────────────────────────────────────────
     auth: {
-      register: (data) => request('POST', '/auth/register', data),
-      login:    (data) => request('POST', '/auth/login',    data),
-      logout:   ()     => request('POST', '/auth/logout'),
-      refresh:  ()     => request('POST', '/auth/refresh'),
+      register:  (data) => request('POST', '/auth/register',    data),
+      login:     (data) => request('POST', '/auth/login',       data),
+      logout:    ()     => request('POST', '/auth/logout'),
+      refresh:   ()     => request('POST', '/auth/refresh'),
+      verifyOtp: (data) => request('POST', '/auth/verify-otp',  data),
+      resendOtp: (data) => request('POST', '/auth/resend-otp',  data),
     },
 
     // ── Users ───────────────────────────────────────────────────────────

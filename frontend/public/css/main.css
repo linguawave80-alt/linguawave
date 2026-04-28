@@ -2172,3 +2172,186 @@ html, body {
   width: 100% !important;
   max-width: 100%;
 }
+
+/* ============================================================
+   OTP VERIFICATION PANEL
+   Matches the existing glassmorphic dark design system.
+   ============================================================ */
+
+/* Hide tab buttons while OTP panel is active */
+.tab-btn.otp-hidden {
+  display: none !important;
+}
+
+/* ── OTP panel entrance animation ── */
+#tab-otp.active {
+  animation: otp-slide-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes otp-slide-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Back button ── */
+.otp-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-bottom: 20px;
+  transition: color var(--transition);
+}
+
+.otp-back-btn:hover {
+  color: var(--accent);
+}
+
+/* ── OTP header block ── */
+.otp-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.otp-shield-icon {
+  font-size: 2.4rem;
+  display: block;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 0 12px rgba(127,255,212,0.4));
+}
+
+.otp-email-display {
+  color: var(--accent);
+  font-weight: 600;
+  word-break: break-all;
+}
+
+/* ── 6-digit input row ── */
+.otp-inputs {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
+.otp-digit {
+  width: 48px;
+  height: 58px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-family: var(--font-display);
+  text-align: center;
+  outline: none;
+  transition:
+    border-color 0.2s,
+    box-shadow   0.2s,
+    background   0.2s;
+  -moz-appearance: textfield;
+  caret-color: var(--accent);
+}
+
+.otp-digit::-webkit-outer-spin-button,
+.otp-digit::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.otp-digit:focus {
+  border-color: var(--accent);
+  background: rgba(127, 255, 212, 0.06);
+  box-shadow: 0 0 0 3px rgba(127, 255, 212, 0.18);
+}
+
+.otp-digit:not(:placeholder-shown) {
+  border-color: rgba(127, 255, 212, 0.35);
+}
+
+/* ── Error display ── */
+.otp-error {
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.3);
+  border-radius: 10px;
+  color: #ff7b7b;
+  font-size: 0.82rem;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  text-align: center;
+  line-height: 1.45;
+}
+
+/* ── Resend section ── */
+.otp-resend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.otp-resend-label {
+  color: var(--text-3);
+  font-size: 0.82rem;
+}
+
+.otp-resend-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background var(--transition), opacity var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.otp-resend-btn:hover:not(:disabled) {
+  background: rgba(127, 255, 212, 0.1);
+}
+
+.otp-resend-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.otp-countdown {
+  color: var(--text-3);
+  font-weight: 400;
+  font-size: 0.78rem;
+  min-width: 36px;
+}
+
+/* ── Expiry note ── */
+.otp-expiry-note {
+  text-align: center;
+  color: var(--text-3);
+  font-size: 0.75rem;
+  margin-top: 16px;
+}
+
+/* ── Mobile adjustments for OTP inputs ── */
+@media (max-width: 400px) {
+  .otp-inputs {
+    gap: 7px;
+  }
+
+  .otp-digit {
+    width: 42px;
+    height: 52px;
+    font-size: 1.4rem;
+    border-radius: 11px;
+  }
+}

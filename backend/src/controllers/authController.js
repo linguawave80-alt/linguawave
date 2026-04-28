@@ -22,10 +22,19 @@ const bcrypt = require('bcryptjs');
 const { validationResult } = require('express-validator');
 const { prisma } = require('../config/postgres');
 const UserActivity = require('../models/mongo/UserActivity');
+const OtpRecord    = require('../models/mongo/OtpRecord');
 const { AppError } = require('../middleware/errorMiddleware');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 const EmailService = require('../Services/emailService');
+const {
+  generateOtp,
+  hashOtp,
+  verifyOtp: compareOtp,
+  signPreAuthToken,
+  verifyPreAuthToken,
+  maskEmail,
+} = require('../utils/otpHelper');
 
 // jwtHelper — import defensively so missing exports don't crash the server
 const jwtHelper = require('../utils/jwtHelper');
@@ -176,6 +185,7 @@ const login = async (req, res, next) => {
       include: { profile: true },
     });
 
+    // Deliberately vague error — never reveal whether email exists
     if (!user || !user.passwordHash) {
       throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
     }
@@ -185,17 +195,205 @@ const login = async (req, res, next) => {
       throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
     }
 
-    const { accessToken, refreshToken } = await generateTokenPair(user, { userAgent: req.headers['user-agent'], ipAddress: req.ip });
+    // ── Password is correct. Do NOT issue tokens yet. ──────────────────────────────
+    // Generate OTP, hash it, store in MongoDB, send email.
+    const otp    = generateOtp();
+    const hash   = await hashOtp(otp);
+
+    await OtpRecord.upsertOtp({
+      userId: user.id,
+      email:  user.email,
+      otpHash: hash,
+      ttlMinutes: 5,
+    });
+
+    // Send OTP email — non-blocking (never crash login over email failure)
+    EmailService.sendLoginOtp(user.email, { otp, expiryMinutes: 5 }).catch(err =>
+      logger.error(`[OTP] Email send failed for ${user.email}: ${err.message}`)
+    );
+
+    // Issue pre-auth token (short-lived, purpose: 'otp' — cannot access protected routes)
+    const preAuthToken = signPreAuthToken({ userId: user.id, email: user.email });
+
+    logger.info(`[OTP] Login step-1 complete for ${email} — OTP sent`);
+
+    return res.json({
+      success:      true,
+      requiresOtp:  true,
+      preAuthToken,
+      maskedEmail:  maskEmail(user.email),
+    });
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/auth/verify-otp
+// ─────────────────────────────────────────────────────────────────────────────
+const verifyOtp = async (req, res, next) => {
+  try {
+    const { preAuthToken, otp } = req.body;
+
+    if (!preAuthToken || !otp) {
+      return res.status(400).json({ success: false, error: 'preAuthToken and otp are required' });
+    }
+
+    // 1. Verify the pre-auth token (guards against forged requests)
+    let decoded;
+    try {
+      decoded = verifyPreAuthToken(preAuthToken);
+    } catch (err) {
+      return res.status(401).json({ success: false, error: 'OTP session expired. Please log in again.', code: 'PRE_AUTH_EXPIRED' });
+    }
+
+    const { userId, email } = decoded;
+
+    // 2. Load the active OTP record
+    const record = await OtpRecord.findActive(userId);
+    if (!record) {
+      return res.status(401).json({ success: false, error: 'OTP expired. Please log in again.', code: 'OTP_EXPIRED' });
+    }
+
+    // 3. Check if user is currently blocked
+    if (record.blockUntil && record.blockUntil > new Date()) {
+      const secsRemaining = Math.ceil((record.blockUntil - Date.now()) / 1000);
+      return res.status(429).json({
+        success: false,
+        error:   `Too many failed attempts. Try again in ${Math.ceil(secsRemaining / 60)} minute(s).`,
+        code:    'OTP_BLOCKED',
+        retryAfter: secsRemaining,
+      });
+    }
+
+    // 4. Verify OTP (bcrypt compare — constant-time)
+    const isValid = await compareOtp(String(otp).trim(), record.otpHash);
+
+    if (!isValid) {
+      // Increment attempt counter (may set blockUntil)
+      const updated = await OtpRecord.recordFailedAttempt(userId);
+      const attemptsLeft = Math.max(0, 5 - (updated?.attempts || 5));
+
+      if (updated?.blockUntil && updated.blockUntil > new Date()) {
+        return res.status(429).json({
+          success: false,
+          error:   'Too many failed attempts. Account temporarily blocked for 15 minutes.',
+          code:    'OTP_BLOCKED',
+          retryAfter: 15 * 60,
+        });
+      }
+
+      return res.status(401).json({
+        success:      false,
+        error:        `Incorrect OTP. ${attemptsLeft} attempt${attemptsLeft !== 1 ? 's' : ''} remaining.`,
+        code:         'OTP_INVALID',
+        attemptsLeft,
+      });
+    }
+
+    // 5. OTP is correct ─ invalidate the record immediately (one-time use)
+    await OtpRecord.invalidate(userId);
+
+    // 6. Fetch full user (need current role etc.)
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    });
+    if (!user) throw new AppError('User not found', 401);
+
+    // 7. Now issue real tokens (access + refresh)
+    const { accessToken, refreshToken } = await generateTokenPair(user, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
     setAccessCookie(res, accessToken);
     setRefreshCookie(res, refreshToken);
 
+    // 8. Update lastActiveAt (non-fatal)
     await prisma.userProfile.update({
       where: { userId: user.id },
-      data: { lastActiveAt: new Date() },
-    }).catch((err) => logger.warn('lastActiveAt update failed:', err.message));
+      data:  { lastActiveAt: new Date() },
+    }).catch(err => logger.warn('lastActiveAt update failed:', err.message));
 
-    logger.info(`User logged in: ${email}`);
-    res.json({ success: true, data: { user: safeUser({ ...user }) } });
+    logger.info(`[OTP] Login fully verified for ${email}`);
+
+    return res.json({ success: true, data: { user: safeUser({ ...user }) } });
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/auth/resend-otp
+// ─────────────────────────────────────────────────────────────────────────────
+const resendOtp = async (req, res, next) => {
+  try {
+    const { preAuthToken } = req.body;
+
+    if (!preAuthToken) {
+      return res.status(400).json({ success: false, error: 'preAuthToken is required' });
+    }
+
+    // 1. Verify the pre-auth token
+    let decoded;
+    try {
+      decoded = verifyPreAuthToken(preAuthToken);
+    } catch (err) {
+      return res.status(401).json({ success: false, error: 'OTP session expired. Please log in again.', code: 'PRE_AUTH_EXPIRED' });
+    }
+
+    const { userId, email } = decoded;
+
+    // 2. Check per-user resend rate limit (stored in OtpRecord)
+    const existing = await OtpRecord.findOne({ userId });
+    const RESEND_MAX    = 3;
+    const RESEND_WINDOW = 5 * 60 * 1000; // 5 minutes
+
+    if (existing) {
+      const now          = Date.now();
+      const windowStart  = existing.resendWindowStart?.getTime() || 0;
+      const inWindow     = (now - windowStart) < RESEND_WINDOW;
+
+      if (inWindow && existing.resendCount >= RESEND_MAX) {
+        const secsRemaining = Math.ceil((windowStart + RESEND_WINDOW - now) / 1000);
+        return res.status(429).json({
+          success: false,
+          error:   `Resend limit reached. Try again in ${Math.ceil(secsRemaining / 60)} minute(s).`,
+          code:    'RESEND_LIMIT',
+          retryAfter: secsRemaining,
+        });
+      }
+    }
+
+    // 3. Generate a fresh OTP and upsert
+    const otp  = generateOtp();
+    const hash = await hashOtp(otp);
+
+    await OtpRecord.upsertOtp({
+      userId,
+      email,
+      otpHash:    hash,
+      ttlMinutes: 5,
+    });
+
+    // 4. Send the new OTP email (non-blocking)
+    EmailService.sendLoginOtp(email, { otp, expiryMinutes: 5 }).catch(err =>
+      logger.error(`[OTP] Resend email failed for ${email}: ${err.message}`)
+    );
+
+    // Reload to get updated resendCount for the response
+    const updated = await OtpRecord.findOne({ userId });
+
+    logger.info(`[OTP] OTP resent for ${email} (resendCount: ${updated?.resendCount})`);
+
+    return res.json({
+      success:      true,
+      message:      'A new OTP has been sent to your email.',
+      resendCount:  updated?.resendCount || 1,
+      resendMax:    RESEND_MAX,
+    });
 
   } catch (err) {
     next(err);
@@ -325,5 +523,6 @@ module.exports = {
   register, login, refreshToken, logout,
   logoutAll, listSessions, googleCallback,
   verifyEmail, requestPasswordReset, resetPassword,
+  verifyOtp, resendOtp,
 };
 

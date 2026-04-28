@@ -331,6 +331,62 @@
           </button>
         </form>
       </div>
+
+      <!-- OTP Verification Panel (shown programmatically after password step) -->
+      <div class="tab-content" id="tab-otp">
+        <button class="otp-back-btn" id="otpBackBtn" type="button" aria-label="Back to login">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Back
+        </button>
+
+        <div class="otp-header">
+          <div class="otp-shield-icon" aria-hidden="true">🔐</div>
+          <h2>Verify your identity</h2>
+          <p class="modal-sub">
+            We sent a 6-digit code to<br>
+            <strong id="otpMaskedEmail" class="otp-email-display">your email</strong>
+          </p>
+        </div>
+
+        <form id="otpForm" novalidate autocomplete="off">
+          <!-- 6 individual digit boxes -->
+          <div class="otp-inputs" role="group" aria-label="6-digit verification code">
+            <input class="otp-digit" type="text" inputmode="numeric" maxlength="1"
+              pattern="[0-9]" autocomplete="one-time-code" aria-label="Digit 1" id="otpD1" />
+            <input class="otp-digit" type="text" inputmode="numeric" maxlength="1"
+              pattern="[0-9]" aria-label="Digit 2" id="otpD2" />
+            <input class="otp-digit" type="text" inputmode="numeric" maxlength="1"
+              pattern="[0-9]" aria-label="Digit 3" id="otpD3" />
+            <input class="otp-digit" type="text" inputmode="numeric" maxlength="1"
+              pattern="[0-9]" aria-label="Digit 4" id="otpD4" />
+            <input class="otp-digit" type="text" inputmode="numeric" maxlength="1"
+              pattern="[0-9]" aria-label="Digit 5" id="otpD5" />
+            <input class="otp-digit" type="text" inputmode="numeric" maxlength="1"
+              pattern="[0-9]" aria-label="Digit 6" id="otpD6" />
+          </div>
+
+          <!-- Error message -->
+          <div class="otp-error" id="otpError" role="alert" style="display:none;"></div>
+
+          <button type="submit" class="btn-form" id="otpSubmit">
+            <span>Verify &amp; Sign In</span>
+            <div class="btn-spinner hidden"></div>
+          </button>
+        </form>
+
+        <!-- Resend section -->
+        <div class="otp-resend">
+          <span class="otp-resend-label">Didn't receive it?</span>
+          <button type="button" class="otp-resend-btn" id="resendOtpBtn" disabled>
+            Resend code <span id="resendCountdown" class="otp-countdown"></span>
+          </button>
+        </div>
+
+        <p class="otp-expiry-note">⏱ Code expires in 5 minutes</p>
+      </div>
+
     </div>
   </div>
 

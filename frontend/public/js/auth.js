@@ -14,6 +14,8 @@ const AuthModule = (() => {
 
   // ─── State ────────────────────────────────────────────────────────────────
   let _currentUser = null;  // populated from /users/me — NOT from localStorage
+  let _preAuthToken = null;  // short-lived token held between login and OTP steps
+  let _resendTimer = null;  // countdown interval reference
 
   const getUser = () => _currentUser;
 
@@ -128,15 +130,15 @@ const AuthModule = (() => {
     }
   };
 
-  // ─── Login ────────────────────────────────────────────────────────────────
+  // ─── Login ──────────────────────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    const email = document.getElementById('loginEmail')?.value.trim() || '';
+    const email    = document.getElementById('loginEmail')?.value.trim() || '';
     const password = document.getElementById('loginPassword')?.value || '';
 
     const emailErr = validateField(email, [{ required: true }, { email: true }]);
-    const pwErr = validateField(password, [{ required: true }]);
+    const pwErr    = validateField(password, [{ required: true }]);
     showFieldError(document.getElementById('loginEmailErr'), emailErr);
     showFieldError(document.getElementById('loginPwErr'), pwErr);
     if (emailErr || pwErr) return;
@@ -144,18 +146,146 @@ const AuthModule = (() => {
     setButtonLoading('loginSubmit', true);
     try {
       const res = await ApiClient.auth.login({ email, password });
-      await ApiClient.bootstrap();
-      // Fetch profile from MongoDB Atlas
-      const profileRes = await ApiClient.users.me();
-      setUser(profileRes.data.user);
-      showFormToast('loginToast', '✓ Welcome back! Redirecting…', 'success');
-      setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1000);
+
+      if (res.requiresOtp) {
+        // ── Step 1 complete — store pre-auth token, show OTP panel ──────────
+        _preAuthToken = res.preAuthToken;
+        showOtpPanel(res.maskedEmail || email);
+      } else {
+        // Fallback path (shouldn't occur for email/password logins)
+        await ApiClient.bootstrap();
+        const profileRes = await ApiClient.users.me();
+        setUser(profileRes.data.user);
+        showFormToast('loginToast', '✓ Welcome back! Redirecting…', 'success');
+        setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1000);
+      }
     } catch (err) {
       showFormToast('loginToast', err.message || 'Invalid credentials', 'error');
     } finally {
       setButtonLoading('loginSubmit', false);
     }
   };
+
+  // ─── OTP Panel show/hide ──────────────────────────────────────────────────
+  const showOtpPanel = (maskedEmail) => {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.add('otp-hidden'));
+    const panel = document.getElementById('tab-otp');
+    if (panel) {
+      panel.classList.add('active');
+      const emailEl = document.getElementById('otpMaskedEmail');
+      if (emailEl) emailEl.textContent = maskedEmail;
+    }
+    // Re-enable submit button (may have been disabled from a previous blocked attempt)
+    const submitBtn = document.getElementById('otpSubmit');
+    if (submitBtn) submitBtn.disabled = false;
+    clearOtpError();
+    startResendCountdown(60);
+    setTimeout(() => document.querySelector('.otp-digit')?.focus(), 150);
+  };
+
+  const hideOtpPanel = () => {
+    _preAuthToken = null;
+    if (_resendTimer) { clearInterval(_resendTimer); _resendTimer = null; }
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('otp-hidden'));
+    document.querySelectorAll('.otp-digit').forEach(inp => { inp.value = ''; });
+    clearOtpError();
+    document.querySelector('.tab-btn[data-tab="login"]')?.click();
+  };
+
+  // ─── OTP Submission ───────────────────────────────────────────────────────
+  const handleOtpSubmit = async (e) => {
+    e.preventDefault();
+    const digits = Array.from(document.querySelectorAll('.otp-digit'))
+      .map(inp => inp.value.trim()).join('');
+
+    if (digits.length !== 6 || !/^\d{6}$/.test(digits)) {
+      showOtpError('Please enter all 6 digits.'); return;
+    }
+    if (!_preAuthToken) {
+      showOtpError('Session expired. Please log in again.');
+      hideOtpPanel(); return;
+    }
+
+    setButtonLoading('otpSubmit', true);
+    clearOtpError();
+    try {
+      await ApiClient.auth.verifyOtp({ preAuthToken: _preAuthToken, otp: digits });
+      _preAuthToken = null;
+      await ApiClient.bootstrap();
+      const profileRes = await ApiClient.users.me();
+      setUser(profileRes.data.user);
+      showToast('✓ Verified! Redirecting to dashboard…', 'success');
+      setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1000);
+    } catch (err) {
+      document.querySelectorAll('.otp-digit').forEach(inp => { inp.value = ''; });
+      document.querySelector('.otp-digit')?.focus();
+      const code = err.code || '';
+      if (code === 'OTP_BLOCKED') {
+        showOtpError(err.message || 'Too many attempts. Try again later.');
+        const btn = document.getElementById('otpSubmit');
+        if (btn) btn.disabled = true;
+      } else if (code === 'OTP_EXPIRED' || code === 'PRE_AUTH_EXPIRED') {
+        showOtpError('Your OTP has expired. Please log in again.');
+        setTimeout(hideOtpPanel, 2000);
+      } else {
+        showOtpError(err.message || 'Incorrect OTP. Please try again.');
+      }
+    } finally {
+      setButtonLoading('otpSubmit', false);
+    }
+  };
+
+  // ─── Resend OTP ───────────────────────────────────────────────────────────
+  const handleResendOtp = async () => {
+    if (!_preAuthToken) return;
+    const btn = document.getElementById('resendOtpBtn');
+    if (btn?.disabled) return;
+    try {
+      await ApiClient.auth.resendOtp({ preAuthToken: _preAuthToken });
+      showToast('New OTP sent! Check your email.', 'success');
+      clearOtpError();
+      document.querySelectorAll('.otp-digit').forEach(inp => { inp.value = ''; });
+      document.querySelector('.otp-digit')?.focus();
+      startResendCountdown(60);
+    } catch (err) {
+      if (err.status === 429) {
+        showOtpError(err.message || 'Resend limit reached. Please wait.');
+        startResendCountdown(err.retryAfter || 300);
+      } else {
+        showOtpError(err.message || 'Failed to resend OTP.');
+      }
+    }
+  };
+
+  const startResendCountdown = (seconds) => {
+    if (_resendTimer) clearInterval(_resendTimer);
+    const btn     = document.getElementById('resendOtpBtn');
+    const countEl = document.getElementById('resendCountdown');
+    if (!btn) return;
+    btn.disabled  = true;
+    let remaining = seconds;
+    const tick = () => { if (countEl) countEl.textContent = `(${remaining}s)`; };
+    tick();
+    _resendTimer = setInterval(() => {
+      remaining--; tick();
+      if (remaining <= 0) {
+        clearInterval(_resendTimer); _resendTimer = null;
+        btn.disabled = false;
+        if (countEl) countEl.textContent = '';
+      }
+    }, 1000);
+  };
+
+  const showOtpError = (msg) => {
+    const el = document.getElementById('otpError');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+  };
+  const clearOtpError = () => {
+    const el = document.getElementById('otpError');
+    if (el) { el.textContent = ''; el.style.display = 'none'; }
+  };
+
 
   // ─── Logout ───────────────────────────────────────────────────────────────
   const logout = async () => {
@@ -281,6 +411,39 @@ const AuthModule = (() => {
 
     document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
     document.getElementById('registerForm')?.addEventListener('submit', handleRegister);
+
+    // ── OTP Form ─────────────────────────────────────────────────────────────
+    document.getElementById('otpForm')?.addEventListener('submit', handleOtpSubmit);
+    document.getElementById('resendOtpBtn')?.addEventListener('click', handleResendOtp);
+    document.getElementById('otpBackBtn')?.addEventListener('click', hideOtpPanel);
+
+    // Auto-advance digit inputs (type one digit → move to next box)
+    document.querySelectorAll('.otp-digit').forEach((input, idx, all) => {
+      input.addEventListener('input', (e) => {
+        // Allow only single digit
+        input.value = input.value.replace(/\D/g, '').slice(-1);
+        if (input.value && idx < all.length - 1) {
+          all[idx + 1].focus();
+        }
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !input.value && idx > 0) {
+          all[idx - 1].focus();
+        }
+        if (e.key === 'ArrowLeft' && idx > 0)  all[idx - 1].focus();
+        if (e.key === 'ArrowRight' && idx < all.length - 1) all[idx + 1].focus();
+      });
+      // Paste handler — paste "123456" fills all boxes
+      input.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const pasted = (e.clipboardData || window.clipboardData)
+          .getData('text').replace(/\D/g, '').slice(0, 6);
+        pasted.split('').forEach((ch, i) => { if (all[i]) all[i].value = ch; });
+        const nextEmpty = Array.from(all).findIndex(inp => !inp.value);
+        if (nextEmpty !== -1) all[nextEmpty].focus();
+        else all[all.length - 1].focus();
+      });
+    });
 
     // Forgot password link inside modal
     document.getElementById('forgotPwLink')?.addEventListener('click', (e) => {

@@ -1,79 +1,106 @@
 // src/services/emailService.js
-// Nodemailer email service — welcome, verification, password reset
+// Nodemailer email service — welcome, verification, OTP, password reset
+//
+// Transporter priority:
+//   1. Real SMTP  — used whenever SMTP_USER + SMTP_PASS are set in .env
+//                   (works in BOTH development AND production)
+//   2. Ethereal   — fallback ONLY when no SMTP credentials are configured
+//                   (fake inbox, dev-only escape hatch)
+//
+// ── Quick Gmail setup ────────────────────────────────────────────────────────
+//   1. Enable 2-Step Verification on your Google account
+//   2. Go to https://myaccount.google.com/apppasswords
+//   3. Create an App Password → copy the 16-char password (no spaces)
+//   4. Add to your .env:
+//        SMTP_HOST=smtp.gmail.com
+//        SMTP_PORT=587
+//        SMTP_SECURE=false
+//        SMTP_USER=youraddress@gmail.com
+//        SMTP_PASS=xxxx xxxx xxxx xxxx   ← the 16-char App Password
+//        SMTP_FROM_NAME=LinguaWave 🌊    ← optional display name override
+// ─────────────────────────────────────────────────────────────────────────────
+
 'use strict';
 
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
-// ── Transporter (lazy-init, auto-generates Ethereal account in dev) ──────────
+// ── Transporter (lazy-init, cached after first call) ─────────────────────────
 let _transporter = null;
-let _fromAddress = `"LinguaWave 🌊" <noreply@linguawave.app>`;
+let _fromAddress  = `"LinguaWave 🌊" <noreply@linguawave.app>`;
 
-/**
- * Build and cache the Nodemailer transporter.
- * In development: auto-creates a real Ethereal test account (no config needed).
- * In production:  uses SMTP_* env vars (Gmail, SendGrid, etc.)
- */
 const getTransporter = async () => {
   if (_transporter) return _transporter;
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  const hasSmtpCreds = process.env.SMTP_USER && process.env.SMTP_PASS;
 
-  if (isProduction) {
-    // ── Production SMTP ────────────────────────────────────────────────────
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      logger.warn('[Email] SMTP_USER / SMTP_PASS not set — emails disabled in production');
-      return null;
-    }
+  if (hasSmtpCreds) {
+    // ── Real SMTP (Gmail / SendGrid / any provider) ────────────────────────
+    // Used in BOTH dev and production whenever credentials are present.
+    const host   = process.env.SMTP_HOST   || 'smtp.gmail.com';
+    const port   = parseInt(process.env.SMTP_PORT  || '587', 10);
+    const secure = process.env.SMTP_SECURE === 'true'; // true only for port 465
 
     _transporter = nodemailer.createTransport({
-      host:   process.env.SMTP_HOST   || 'smtp.gmail.com',
-      port:   parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',   // true = port 465
+      host,
+      port,
+      secure,
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS ? process.env.SMTP_PASS.trim() : undefined, // Gmail: use App Password
+        pass: process.env.SMTP_PASS.trim(), // trim in case of accidental whitespace
       },
+      // Increase timeouts slightly for cloud environments (Render, Railway, etc.)
+      connectionTimeout: 10_000,
+      greetingTimeout:   10_000,
+      socketTimeout:     15_000,
     });
 
-    _fromAddress = `"LinguaWave 🌊" <${process.env.SMTP_USER}>`;
-    logger.info(`[Email] Production SMTP configured: ${process.env.SMTP_HOST}`);
+    const fromName = process.env.SMTP_FROM_NAME || 'LinguaWave 🌊';
+    _fromAddress = `"${fromName}" <${process.env.SMTP_USER}>`;
+
+    logger.info(`[Email] Real SMTP configured → ${host}:${port} as ${process.env.SMTP_USER}`);
 
   } else {
-    // ── Development: auto-generate Ethereal account ────────────────────────
-    // This creates a REAL Ethereal test inbox every cold-start.
-    // Emails appear at https://ethereal.email — no sign-up needed.
+    // ── Ethereal fallback (no credentials set — dev convenience only) ──────
+    logger.warn('[Email] SMTP_USER / SMTP_PASS not set — falling back to Ethereal test inbox.');
+    logger.warn('[Email] Emails will NOT reach real inboxes.');
+    logger.warn('[Email] Add SMTP_USER + SMTP_PASS to your .env to send real emails.');
+
     try {
       const testAccount = await nodemailer.createTestAccount();
-
       _transporter = nodemailer.createTransport({
         host:   'smtp.ethereal.email',
         port:   587,
         secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
+        auth: { user: testAccount.user, pass: testAccount.pass },
       });
-
       _fromAddress = `"LinguaWave 🌊" <${testAccount.user}>`;
-      logger.info(`[Email] Ethereal test account created: ${testAccount.user}`);
-      logger.info(`[Email] View sent emails at: https://ethereal.email/messages`);
+      logger.info(`[Email] Ethereal account: ${testAccount.user}`);
+      logger.info('[Email] View sent emails at https://ethereal.email/messages');
     } catch (err) {
-      logger.error('[Email] Failed to create Ethereal test account:', err.message);
+      logger.error('[Email] Failed to create Ethereal fallback account:', err.message);
       return null;
     }
   }
 
-  // Verify connection
+  // ── Verify the connection before returning ────────────────────────────────
   try {
     await _transporter.verify();
     logger.info('[Email] SMTP connection verified ✓');
   } catch (err) {
     logger.error('[Email] SMTP verify failed:', err.message);
-    logger.error('[Email] Common fixes:');
-    logger.error('  Gmail: enable 2FA + create an App Password at myaccount.google.com/apppasswords');
-    logger.error('  Gmail: set SMTP_HOST=smtp.gmail.com SMTP_PORT=587 SMTP_SECURE=false');
+
+    if (hasSmtpCreds) {
+      // Give actionable hints so the developer knows exactly what to fix
+      logger.error('[Email] ── Troubleshooting ────────────────────────────────────');
+      logger.error('[Email]  Gmail: make sure 2-Step Verification is ON');
+      logger.error('[Email]  Gmail: use an App Password (not your normal password)');
+      logger.error('[Email]    → https://myaccount.google.com/apppasswords');
+      logger.error('[Email]  Correct settings: SMTP_HOST=smtp.gmail.com SMTP_PORT=587 SMTP_SECURE=false');
+      logger.error('[Email]  If on Render/Railway: check firewall — outbound port 587 must be open');
+      logger.error('[Email] ─────────────────────────────────────────────────────────');
+    }
+
     _transporter = null;
     return null;
   }
@@ -81,7 +108,7 @@ const getTransporter = async () => {
   return _transporter;
 };
 
-// ── Brand colours (match CSS variables) ─────────────────────────────────────
+// ── Brand colours (match CSS variables) ──────────────────────────────────────
 const TEAL   = '#7FFFD4';
 const BG     = '#050810';
 const BG2    = '#090e1a';
@@ -89,7 +116,7 @@ const TEXT   = '#f0f4ff';
 const TEXT2  = 'rgba(240,244,255,0.6)';
 const BORDER = 'rgba(255,255,255,0.08)';
 
-// ── Base HTML wrapper ────────────────────────────────────────────────────────
+// ── Base HTML email wrapper ───────────────────────────────────────────────────
 const baseTemplate = (content) => `
 <!DOCTYPE html>
 <html lang="en">
@@ -118,8 +145,8 @@ const baseTemplate = (content) => `
       padding: 32px 36px 28px;
       text-align: center;
     }
-    .logo      { font-size: 1.5rem; font-weight: 800; color: #05080f; letter-spacing: -0.02em; }
-    .logo-sub  { font-size: 0.78rem; color: rgba(5,8,15,0.65); margin-top: 4px; }
+    .logo     { font-size: 1.5rem; font-weight: 800; color: #05080f; letter-spacing: -0.02em; }
+    .logo-sub { font-size: 0.78rem; color: rgba(5,8,15,0.65); margin-top: 4px; }
     .card-body { padding: 36px; }
     h1  { font-size: 1.4rem; font-weight: 700; margin-bottom: 10px; color: ${TEXT}; }
     p   { font-size: 0.9rem; color: ${TEXT2}; line-height: 1.65; margin-bottom: 16px; }
@@ -154,7 +181,7 @@ const baseTemplate = (content) => `
 </html>
 `;
 
-// ── Email templates ──────────────────────────────────────────────────────────
+// ── Email templates ───────────────────────────────────────────────────────────
 const templates = {
 
   welcome: ({ username, dashboardUrl }) => ({
@@ -226,57 +253,88 @@ const templates = {
     `),
   }),
 
+  loginOtp: ({ otp, expiryMinutes = 5 }) => ({
+    subject: '🔐 Your LinguaWave login code',
+    html: baseTemplate(`
+      <h1>Your login verification code</h1>
+      <p>Use the code below to complete your LinguaWave sign-in.
+      Do not share this code with anyone.</p>
+
+      <div style="
+        background: rgba(127,255,212,0.08);
+        border: 2px solid ${TEAL};
+        border-radius: 16px;
+        padding: 28px;
+        text-align: center;
+        margin: 24px 0;
+      ">
+        <div style="
+          font-size: 2.8rem;
+          font-weight: 800;
+          letter-spacing: 0.35em;
+          color: ${TEAL};
+          font-family: 'Courier New', monospace;
+          line-height: 1;
+        ">${otp}</div>
+        <p style="margin-top:14px;margin-bottom:0;font-size:0.8rem;">
+          ⏱ Expires in <strong style="color:${TEXT}">${expiryMinutes} minutes</strong>
+        </p>
+      </div>
+
+      <div class="divider"></div>
+      <p class="small">
+        🔒 If this wasn't you, ignore this email — your account is safe.
+        No one can log in without this code.
+      </p>
+    `),
+  }),
+
 };
 
-// ── Core send helper ─────────────────────────────────────────────────────────
+// ── Core send helper ──────────────────────────────────────────────────────────
 const sendEmail = async ({ to, subject, html }) => {
   try {
     const transporter = await getTransporter();
 
     if (!transporter) {
-      logger.warn(`[Email] Transporter not available — skipping email to ${to}`);
+      logger.warn(`[Email] Transporter unavailable — skipping email to ${to}`);
       return null;
     }
 
-    const info = await transporter.sendMail({
-      from: _fromAddress,
-      to,
-      subject,
-      html,
-    });
+    const info = await transporter.sendMail({ from: _fromAddress, to, subject, html });
 
-    logger.info(`[Email] ✓ Sent "${subject}" to ${to} (id: ${info.messageId})`);
+    logger.info(`[Email] ✓ Sent "${subject}" → ${to} (id: ${info.messageId})`);
 
-    // In dev, always log the Ethereal preview link
-    if (process.env.NODE_ENV !== 'production') {
+    // If Ethereal was used as fallback, print the preview URL so devs can still inspect it
+    if (process.env.NODE_ENV !== 'production' && !process.env.SMTP_USER) {
       const previewUrl = nodemailer.getTestMessageUrl(info);
       if (previewUrl) {
-        logger.info(`[Email] 👀 Preview URL: ${previewUrl}`);
-        // Also print to console so it's impossible to miss
-        console.log('\n📧 EMAIL PREVIEW:', previewUrl, '\n');
+        logger.info(`[Email] 👀 Ethereal preview: ${previewUrl}`);
+        console.log('\n📧 EMAIL PREVIEW (Ethereal):', previewUrl, '\n');
       }
     }
 
     return info;
 
   } catch (err) {
-    // Log full error so you can actually debug it
     logger.error(`[Email] ✗ Failed to send "${subject}" to ${to}`);
     logger.error(`[Email] Error: ${err.message}`);
-    if (err.code)    logger.error(`[Email] Code: ${err.code}`);
-    if (err.command) logger.error(`[Email] Command: ${err.command}`);
+    if (err.code)         logger.error(`[Email] Code: ${err.code}`);
+    if (err.command)      logger.error(`[Email] SMTP command: ${err.command}`);
+    if (err.responseCode) logger.error(`[Email] SMTP response: ${err.responseCode}`);
     // Never crash the request over an email failure
     return null;
   }
 };
 
-// ── Public API ───────────────────────────────────────────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────────
 const EmailService = {
   sendWelcome:         (to, data) => sendEmail({ to, ...templates.welcome(data) }),
   sendVerifyEmail:     (to, data) => sendEmail({ to, ...templates.verifyEmail(data) }),
   sendPasswordReset:   (to, data) => sendEmail({ to, ...templates.passwordReset(data) }),
   sendPasswordChanged: (to, data) => sendEmail({ to, ...templates.passwordChanged(data) }),
   sendOAuthWelcome:    (to, data) => sendEmail({ to, ...templates.oauthWelcome(data) }),
+  sendLoginOtp:        (to, data) => sendEmail({ to, ...templates.loginOtp(data) }),
 };
 
 module.exports = EmailService;

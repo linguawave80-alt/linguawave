@@ -25,6 +25,14 @@ const speechLimiter = new RateLimiterMemory({
   duration: 60,
 });
 
+// OTP resend limiter — max 3 resend requests per 5 minutes per IP
+// (additional per-user resend logic is enforced in the controller)
+const otpResendLimiterStore = new RateLimiterMemory({
+  keyPrefix: 'otp_resend',
+  points:    3,
+  duration:  5 * 60, // 5 minutes
+});
+
 /**
  * Rate limiter middleware factory
  */
@@ -47,8 +55,9 @@ const createRateLimiter = (limiter, name = 'rate') => {
   };
 };
 
-const rateLimiter = createRateLimiter(generalLimiter, 'general');
-const strictAuthLimiter = createRateLimiter(authLimiter, 'auth');
-const speechRateLimiter = createRateLimiter(speechLimiter, 'speech');
+const rateLimiter       = createRateLimiter(generalLimiter,       'general');
+const strictAuthLimiter = createRateLimiter(authLimiter,          'auth');
+const speechRateLimiter = createRateLimiter(speechLimiter,        'speech');
+const otpResendLimiter  = createRateLimiter(otpResendLimiterStore, 'otp_resend');
 
-module.exports = { rateLimiter, strictAuthLimiter, speechRateLimiter };
+module.exports = { rateLimiter, strictAuthLimiter, speechRateLimiter, otpResendLimiter };
