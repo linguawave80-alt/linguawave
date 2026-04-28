@@ -118,9 +118,17 @@ const optionalAuth = async (req, res, next) => {
         where: { id: decoded.id },
         select: { id: true, email: true, username: true, role: true },
       });
+    } else if (req.cookies?.accessToken) {
+      const token = req.cookies.accessToken;
+      const decoded = await verifyAccessToken(token);
+      req.user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: { id: true, email: true, username: true, role: true },
+      });
     }
-  } catch {
+  } catch (error) {
     // Silently ignore auth errors in optional mode
+    logger.debug('Optional auth failed to attach user:', error.message);
   }
   next();
 };

@@ -92,10 +92,21 @@ authSessionSchema.statics.createSession = async function ({
  * for the 30-second rotation grace window).
  */
 authSessionSchema.statics.findByToken = async function (tokenHash) {
-  return this.findOne({
+  const session = await this.findOne({
     $or: [{ tokenHash }, { prevTokenHash: tokenHash }],
     expiresAt: { $gt: new Date() },
   });
+
+  if (session && session.prevTokenHash === tokenHash) {
+    // If they used the OLD token, it MUST be within 30 seconds of the rotation time (lastUsedAt)
+    const timeSinceRotation = Date.now() - session.lastUsedAt.getTime();
+    if (timeSinceRotation > 30000) {
+      // It's a reuse attack (or a very slow network). Deny it.
+      return null;
+    }
+  }
+
+  return session;
 };
 
 /**

@@ -41,7 +41,12 @@ const hashToken = (raw) => crypto.createHash('sha256').update(raw).digest('hex')
  * @returns {{ accessToken, refreshToken }}
  */
 const generateTokenPair = async (user, meta = {}) => {
-  const payload = { id: user.id, email: user.email, role: user.role };
+  const payload = { 
+    id: user.id, 
+    email: user.email, 
+    role: user.role,
+    jti: crypto.randomUUID() 
+  };
 
   const accessToken  = jwt.sign(payload, ACCESS_SECRET,  { expiresIn: ACCESS_TTL });
   const refreshToken = jwt.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_TTL });
@@ -60,11 +65,9 @@ const generateTokenPair = async (user, meta = {}) => {
 
 // ── Access token verification (stateless) ─────────────────────────────────────
 const verifyAccessToken = (token) => {
-  try {
-    return jwt.verify(token, ACCESS_SECRET);
-  } catch {
-    return null;
-  }
+  // We no longer catch the error here, we let the middleware handle TokenExpiredError
+  // or JsonWebTokenError so it can return appropriate 401s instead of 500s.
+  return jwt.verify(token, ACCESS_SECRET);
 };
 
 // ── Refresh token verification + Atlas session lookup ─────────────────────────
@@ -104,7 +107,12 @@ const verifyRefreshToken = async (rawToken) => {
  * Returns { accessToken, refreshToken }.
  */
 const rotateTokens = async (user, oldRawToken, meta = {}) => {
-  const payload = { id: user.id, email: user.email, role: user.role };
+  const payload = { 
+    id: user.id, 
+    email: user.email, 
+    role: user.role,
+    jti: crypto.randomUUID()
+  };
 
   const newAccessToken  = jwt.sign(payload, ACCESS_SECRET,  { expiresIn: ACCESS_TTL });
   const newRefreshToken = jwt.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_TTL });
