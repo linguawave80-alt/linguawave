@@ -53,6 +53,7 @@ const getTransporter = async () => {
       connectionTimeout: 10_000,
       greetingTimeout:   10_000,
       socketTimeout:     15_000,
+      family: 4, // Force IPv4 to prevent ENETUNREACH errors on networks without IPv6 support
     });
 
     const fromName = process.env.SMTP_FROM_NAME || 'LinguaWave 🌊';
