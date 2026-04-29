@@ -101,8 +101,12 @@ const getTransporter = async () => {
       logger.error('[Email] ─────────────────────────────────────────────────────────');
     }
 
-    _transporter = null;
-    return null;
+   try {
+  await _transporter.verify();
+  logger.info('[Email] SMTP connection verified ✓');
+} catch (err) {
+  logger.warn('[Email] SMTP verify failed, but continuing...');
+}
   }
 
   return _transporter;
