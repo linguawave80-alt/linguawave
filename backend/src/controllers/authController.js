@@ -521,11 +521,6 @@ const verifyEmail = async (req, res, next) => {
 
 const requestPasswordReset = async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, error: 'Validation failed', details: errors.array() });
-    }
-
     const { email } = req.body;
 
     // Always return the same message to prevent email enumeration
@@ -566,11 +561,6 @@ const requestPasswordReset = async (req, res, next) => {
 
 const resetPassword = async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, error: 'Validation failed', details: errors.array() });
-    }
-
     const { token } = req.params;
     const { password } = req.body;
 
@@ -603,7 +593,6 @@ const resetPassword = async (req, res, next) => {
         passwordHash,
         passwordResetToken: null,
         passwordResetExpires: null,
-        emailVerified: true, // Successfully resetting password via email link proves email ownership
       }
     });
 
