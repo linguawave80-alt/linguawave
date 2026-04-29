@@ -1,117 +1,16 @@
 // src/services/emailService.js
-// Nodemailer email service — welcome, verification, OTP, password reset
-//
-// Transporter priority:
-//   1. Real SMTP  — used whenever SMTP_USER + SMTP_PASS are set in .env
-//                   (works in BOTH development AND production)
-//   2. Ethereal   — fallback ONLY when no SMTP credentials are configured
-//                   (fake inbox, dev-only escape hatch)
-//
-// ── Quick Gmail setup ────────────────────────────────────────────────────────
-//   1. Enable 2-Step Verification on your Google account
-//   2. Go to https://myaccount.google.com/apppasswords
-//   3. Create an App Password → copy the 16-char password (no spaces)
-//   4. Add to your .env:
-//        SMTP_HOST=smtp.gmail.com
-//        SMTP_PORT=587
-//        SMTP_SECURE=false
-//        SMTP_USER=youraddress@gmail.com
-//        SMTP_PASS=xxxx xxxx xxxx xxxx   ← the 16-char App Password
-//        SMTP_FROM_NAME=LinguaWave 🌊    ← optional display name override
-// ─────────────────────────────────────────────────────────────────────────────
+// Brevo email service — welcome, verification, OTP, password reset
 
 'use strict';
 
-const nodemailer = require('nodemailer');
+const SibApiV3Sdk = require('sib-api-v3-sdk');
 const logger = require('../utils/logger');
 
-// ── Transporter (lazy-init, cached after first call) ─────────────────────────
-let _transporter = null;
-let _fromAddress  = `"LinguaWave 🌊" <noreply@linguawave.app>`;
+// ── Initialize Brevo API Client ──────────────────────────────────────────────
+const client = SibApiV3Sdk.ApiClient.instance;
+client.authentications['api-key'].apiKey = process.env.BREVO_API_KEY;
 
-const getTransporter = async () => {
-  if (_transporter) return _transporter;
-
-  const hasSmtpCreds = process.env.SMTP_USER && process.env.SMTP_PASS;
-
-  if (hasSmtpCreds) {
-    // ── Real SMTP (Gmail / SendGrid / any provider) ────────────────────────
-    // Used in BOTH dev and production whenever credentials are present.
-    const host   = process.env.SMTP_HOST   || 'smtp.gmail.com';
-    const port   = parseInt(process.env.SMTP_PORT  || '587', 10);
-    const secure = process.env.SMTP_SECURE === 'true'; // true only for port 465
-
-    _transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS.trim(), // trim in case of accidental whitespace
-      },
-      // Increase timeouts slightly for cloud environments (Render, Railway, etc.)
-      connectionTimeout: 10_000,
-      greetingTimeout:   10_000,
-      socketTimeout:     15_000,
-      family: 4, // Force IPv4 to prevent ENETUNREACH errors on networks without IPv6 support
-    });
-
-    const fromName = process.env.SMTP_FROM_NAME || 'LinguaWave 🌊';
-    _fromAddress = `"${fromName}" <${process.env.SMTP_USER}>`;
-
-    logger.info(`[Email] Real SMTP configured → ${host}:${port} as ${process.env.SMTP_USER}`);
-
-  } else {
-    // ── Ethereal fallback (no credentials set — dev convenience only) ──────
-    logger.warn('[Email] SMTP_USER / SMTP_PASS not set — falling back to Ethereal test inbox.');
-    logger.warn('[Email] Emails will NOT reach real inboxes.');
-    logger.warn('[Email] Add SMTP_USER + SMTP_PASS to your .env to send real emails.');
-
-    try {
-      const testAccount = await nodemailer.createTestAccount();
-      _transporter = nodemailer.createTransport({
-        host:   'smtp.ethereal.email',
-        port:   587,
-        secure: false,
-        auth: { user: testAccount.user, pass: testAccount.pass },
-      });
-      _fromAddress = `"LinguaWave 🌊" <${testAccount.user}>`;
-      logger.info(`[Email] Ethereal account: ${testAccount.user}`);
-      logger.info('[Email] View sent emails at https://ethereal.email/messages');
-    } catch (err) {
-      logger.error('[Email] Failed to create Ethereal fallback account:', err.message);
-      return null;
-    }
-  }
-
-  // ── Verify the connection before returning ────────────────────────────────
-  try {
-    await _transporter.verify();
-    logger.info('[Email] SMTP connection verified ✓');
-  } catch (err) {
-    logger.error('[Email] SMTP verify failed:', err.message);
-
-    if (hasSmtpCreds) {
-      // Give actionable hints so the developer knows exactly what to fix
-      logger.error('[Email] ── Troubleshooting ────────────────────────────────────');
-      logger.error('[Email]  Gmail: make sure 2-Step Verification is ON');
-      logger.error('[Email]  Gmail: use an App Password (not your normal password)');
-      logger.error('[Email]    → https://myaccount.google.com/apppasswords');
-      logger.error('[Email]  Correct settings: SMTP_HOST=smtp.gmail.com SMTP_PORT=587 SMTP_SECURE=false');
-      logger.error('[Email]  If on Render/Railway: check firewall — outbound port 587 must be open');
-      logger.error('[Email] ─────────────────────────────────────────────────────────');
-    }
-
-   try {
-  await _transporter.verify();
-  logger.info('[Email] SMTP connection verified ✓');
-} catch (err) {
-  logger.warn('[Email] SMTP verify failed, but continuing...');
-}
-  }
-
-  return _transporter;
-};
+const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
 // ── Brand colours (match CSS variables) ──────────────────────────────────────
 const TEAL   = '#7FFFD4';
@@ -297,40 +196,24 @@ const templates = {
 };
 
 // ── Core send helper ──────────────────────────────────────────────────────────
-const sendEmail = async ({ to, subject, html }) => {
+async function sendEmail({ to, subject, html }) {
   try {
-    const transporter = await getTransporter();
+    await emailApi.sendTransacEmail({
+      sender: {
+        name: "LinguaWave",
+        email: process.env.EMAIL_FROM || "noreply@linguawave.app"
+      },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html
+    });
 
-    if (!transporter) {
-      logger.warn(`[Email] Transporter unavailable — skipping email to ${to}`);
-      return null;
-    }
-
-    const info = await transporter.sendMail({ from: _fromAddress, to, subject, html });
-
-    logger.info(`[Email] ✓ Sent "${subject}" → ${to} (id: ${info.messageId})`);
-
-    // If Ethereal was used as fallback, print the preview URL so devs can still inspect it
-    if (process.env.NODE_ENV !== 'production' && !process.env.SMTP_USER) {
-      const previewUrl = nodemailer.getTestMessageUrl(info);
-      if (previewUrl) {
-        logger.info(`[Email] 👀 Ethereal preview: ${previewUrl}`);
-        console.log('\n📧 EMAIL PREVIEW (Ethereal):', previewUrl, '\n');
-      }
-    }
-
-    return info;
-
+    logger.info(`[Email] ✓ Sent "${subject}" → ${to}`);
   } catch (err) {
-    logger.error(`[Email] ✗ Failed to send "${subject}" to ${to}`);
-    logger.error(`[Email] Error: ${err.message}`);
-    if (err.code)         logger.error(`[Email] Code: ${err.code}`);
-    if (err.command)      logger.error(`[Email] SMTP command: ${err.command}`);
-    if (err.responseCode) logger.error(`[Email] SMTP response: ${err.responseCode}`);
-    // Never crash the request over an email failure
-    return null;
+    logger.error(`[Email] ✗ Failed to send "${subject}" → ${to}`);
+    logger.error(err.message);
   }
-};
+}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 const EmailService = {
