@@ -116,13 +116,18 @@ const AuthModule = (() => {
     setButtonLoading('registerSubmit', true);
     try {
       const res = await ApiClient.auth.register({ email, username, password });
-      // Server sets httpOnly refresh cookie; bootstrap to obtain access token
-      await ApiClient.bootstrap();
-      // Fetch full user profile from MongoDB Atlas
-      const profileRes = await ApiClient.users.me();
-      setUser(profileRes.data.user);
-      showFormToast('registerToast', '🎉 Account created! Redirecting…', 'success');
-      setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1200);
+      
+      if (res.requiresOtp) {
+        _preAuthToken = res.preAuthToken;
+        showOtpPanel(res.maskedEmail || email);
+      } else {
+        // Fallback if no OTP required
+        await ApiClient.bootstrap();
+        const profileRes = await ApiClient.users.me();
+        setUser(profileRes.data.user);
+        showFormToast('registerToast', '🎉 Account created! Redirecting…', 'success');
+        setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1200);
+      }
     } catch (err) {
       showFormToast('registerToast', err.message || 'Registration failed', 'error');
     } finally {
@@ -147,18 +152,11 @@ const AuthModule = (() => {
     try {
       const res = await ApiClient.auth.login({ email, password });
 
-      if (res.requiresOtp) {
-        // ── Step 1 complete — store pre-auth token, show OTP panel ──────────
-        _preAuthToken = res.preAuthToken;
-        showOtpPanel(res.maskedEmail || email);
-      } else {
-        // Fallback path (shouldn't occur for email/password logins)
-        await ApiClient.bootstrap();
-        const profileRes = await ApiClient.users.me();
-        setUser(profileRes.data.user);
-        showFormToast('loginToast', '✓ Welcome back! Redirecting…', 'success');
-        setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1000);
-      }
+      await ApiClient.bootstrap();
+      const profileRes = await ApiClient.users.me();
+      setUser(profileRes.data.user);
+      showFormToast('loginToast', '✓ Welcome back! Redirecting…', 'success');
+      setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1000);
     } catch (err) {
       showFormToast('loginToast', err.message || 'Invalid credentials', 'error');
     } finally {

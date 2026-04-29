@@ -22,7 +22,7 @@ const bcrypt = require('bcryptjs');
 const { validationResult } = require('express-validator');
 const { prisma } = require('../config/postgres');
 const UserActivity = require('../models/mongo/UserActivity');
-const OtpRecord    = require('../models/mongo/OtpRecord');
+const OtpRecord = require('../models/mongo/OtpRecord');
 const { AppError } = require('../middleware/errorMiddleware');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
@@ -143,12 +143,23 @@ const register = async (req, res, next) => {
       logger.warn('UserActivity.create failed (non-fatal):', err.message)
     );
 
-    // Create initial token pair and persist refresh session in MongoDB
-    const { accessToken, refreshToken: newToken } = await jwtHelper.generateTokenPair(user, { userAgent: req.headers['user-agent'], ipAddress: req.ip });
-    setAccessCookie(res, accessToken);
-    setRefreshCookie(res, newToken);
-
     logger.info(`New user registered: ${email}`);
+
+    // ── Generate OTP, hash it, store in MongoDB, send email ────────────────────
+    const otp = generateOtp();
+    const hash = await hashOtp(otp);
+
+    await OtpRecord.upsertOtp({
+      userId: user.id,
+      email: user.email,
+      otpHash: hash,
+      ttlMinutes: 5,
+    });
+
+    // Send OTP email — non-blocking
+    EmailService.sendLoginOtp(user.email, { otp, expiryMinutes: 5 }).catch(err =>
+      logger.error(`[OTP] Email send failed for ${user.email}: ${err.message}`)
+    );
 
     // Send welcome email (non-blocking)
     const dashboardUrl = `${FRONTEND_URL}/pages/dashboard.html`;
@@ -157,10 +168,14 @@ const register = async (req, res, next) => {
       dashboardUrl
     }).catch(err => logger.error(`Welcome email error: ${err}`));
 
+    // Issue pre-auth token (short-lived, purpose: 'otp' — cannot access protected routes)
+    const preAuthToken = signPreAuthToken({ userId: user.id, email: user.email });
+
     res.status(201).json({
       success: true,
-      message: 'Registration successful',
-      data: { user: safeUser(user) },
+      requiresOtp: true,
+      preAuthToken,
+      maskedEmail: maskEmail(user.email),
     });
 
   } catch (err) {
@@ -195,33 +210,23 @@ const login = async (req, res, next) => {
       throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
     }
 
-    // ── Password is correct. Do NOT issue tokens yet. ──────────────────────────────
-    // Generate OTP, hash it, store in MongoDB, send email.
-    const otp    = generateOtp();
-    const hash   = await hashOtp(otp);
+    // ── Check if email is verified ──────────────────────────────────────────────
+    if (!user.emailVerified) {
+      // Return 401 error since email is not verified yet.
+      return res.status(401).json({ success: false, error: 'Please verify your email first' });
+    }
 
-    await OtpRecord.upsertOtp({
-      userId: user.id,
-      email:  user.email,
-      otpHash: hash,
-      ttlMinutes: 5,
-    });
+    // ── Password is correct & email verified. Issue tokens directly. ─────────────
+    const { accessToken, refreshToken } = await jwtHelper.generateTokenPair(user, { userAgent: req.headers['user-agent'], ipAddress: req.ip });
 
-    // Send OTP email — non-blocking (never crash login over email failure)
-    EmailService.sendLoginOtp(user.email, { otp, expiryMinutes: 5 }).catch(err =>
-      logger.error(`[OTP] Email send failed for ${user.email}: ${err.message}`)
-    );
+    setAccessCookie(res, accessToken);
+    setRefreshCookie(res, refreshToken);
 
-    // Issue pre-auth token (short-lived, purpose: 'otp' — cannot access protected routes)
-    const preAuthToken = signPreAuthToken({ userId: user.id, email: user.email });
-
-    logger.info(`[OTP] Login step-1 complete for ${email} — OTP sent`);
+    logger.info(`Login successful for ${email}`);
 
     return res.json({
-      success:      true,
-      requiresOtp:  true,
-      preAuthToken,
-      maskedEmail:  maskEmail(user.email),
+      success: true,
+      data: { user: safeUser(user) },
     });
 
   } catch (err) {
@@ -261,8 +266,8 @@ const verifyOtp = async (req, res, next) => {
       const secsRemaining = Math.ceil((record.blockUntil - Date.now()) / 1000);
       return res.status(429).json({
         success: false,
-        error:   `Too many failed attempts. Try again in ${Math.ceil(secsRemaining / 60)} minute(s).`,
-        code:    'OTP_BLOCKED',
+        error: `Too many failed attempts. Try again in ${Math.ceil(secsRemaining / 60)} minute(s).`,
+        code: 'OTP_BLOCKED',
         retryAfter: secsRemaining,
       });
     }
@@ -278,16 +283,16 @@ const verifyOtp = async (req, res, next) => {
       if (updated?.blockUntil && updated.blockUntil > new Date()) {
         return res.status(429).json({
           success: false,
-          error:   'Too many failed attempts. Account temporarily blocked for 15 minutes.',
-          code:    'OTP_BLOCKED',
+          error: 'Too many failed attempts. Account temporarily blocked for 15 minutes.',
+          code: 'OTP_BLOCKED',
           retryAfter: 15 * 60,
         });
       }
 
       return res.status(401).json({
-        success:      false,
-        error:        `Incorrect OTP. ${attemptsLeft} attempt${attemptsLeft !== 1 ? 's' : ''} remaining.`,
-        code:         'OTP_INVALID',
+        success: false,
+        error: `Incorrect OTP. ${attemptsLeft} attempt${attemptsLeft !== 1 ? 's' : ''} remaining.`,
+        code: 'OTP_INVALID',
         attemptsLeft,
       });
     }
@@ -295,14 +300,20 @@ const verifyOtp = async (req, res, next) => {
     // 5. OTP is correct ─ invalidate the record immediately (one-time use)
     await OtpRecord.invalidate(userId);
 
-    // 6. Fetch full user (need current role etc.)
+    // 6. Update user's emailVerified status to true
+    await prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: true },
+    });
+
+    // 7. Fetch full user (need current role etc.)
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: { profile: true },
     });
     if (!user) throw new AppError('User not found', 401);
 
-    // 7. Now issue real tokens (access + refresh)
+    // 8. Now issue real tokens (access + refresh)
     const { accessToken, refreshToken } = await generateTokenPair(user, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
@@ -310,10 +321,10 @@ const verifyOtp = async (req, res, next) => {
     setAccessCookie(res, accessToken);
     setRefreshCookie(res, refreshToken);
 
-    // 8. Update lastActiveAt (non-fatal)
+    // 9. Update lastActiveAt (non-fatal)
     await prisma.userProfile.update({
       where: { userId: user.id },
-      data:  { lastActiveAt: new Date() },
+      data: { lastActiveAt: new Date() },
     }).catch(err => logger.warn('lastActiveAt update failed:', err.message));
 
     logger.info(`[OTP] Login fully verified for ${email}`);
@@ -348,33 +359,33 @@ const resendOtp = async (req, res, next) => {
 
     // 2. Check per-user resend rate limit (stored in OtpRecord)
     const existing = await OtpRecord.findOne({ userId });
-    const RESEND_MAX    = 3;
+    const RESEND_MAX = 3;
     const RESEND_WINDOW = 5 * 60 * 1000; // 5 minutes
 
     if (existing) {
-      const now          = Date.now();
-      const windowStart  = existing.resendWindowStart?.getTime() || 0;
-      const inWindow     = (now - windowStart) < RESEND_WINDOW;
+      const now = Date.now();
+      const windowStart = existing.resendWindowStart?.getTime() || 0;
+      const inWindow = (now - windowStart) < RESEND_WINDOW;
 
       if (inWindow && existing.resendCount >= RESEND_MAX) {
         const secsRemaining = Math.ceil((windowStart + RESEND_WINDOW - now) / 1000);
         return res.status(429).json({
           success: false,
-          error:   `Resend limit reached. Try again in ${Math.ceil(secsRemaining / 60)} minute(s).`,
-          code:    'RESEND_LIMIT',
+          error: `Resend limit reached. Try again in ${Math.ceil(secsRemaining / 60)} minute(s).`,
+          code: 'RESEND_LIMIT',
           retryAfter: secsRemaining,
         });
       }
     }
 
     // 3. Generate a fresh OTP and upsert
-    const otp  = generateOtp();
+    const otp = generateOtp();
     const hash = await hashOtp(otp);
 
     await OtpRecord.upsertOtp({
       userId,
       email,
-      otpHash:    hash,
+      otpHash: hash,
       ttlMinutes: 5,
     });
 
@@ -389,10 +400,10 @@ const resendOtp = async (req, res, next) => {
     logger.info(`[OTP] OTP resent for ${email} (resendCount: ${updated?.resendCount})`);
 
     return res.json({
-      success:      true,
-      message:      'A new OTP has been sent to your email.',
-      resendCount:  updated?.resendCount || 1,
-      resendMax:    RESEND_MAX,
+      success: true,
+      message: 'A new OTP has been sent to your email.',
+      resendCount: updated?.resendCount || 1,
+      resendMax: RESEND_MAX,
     });
 
   } catch (err) {
@@ -509,13 +520,107 @@ const verifyEmail = async (req, res, next) => {
 };
 
 const requestPasswordReset = async (req, res, next) => {
-  // STUB: requires passwordResetToken/passwordResetExpires columns — see verifyEmail comment above
-  res.json({ success: true, message: 'If that email exists, a reset link has been sent.' });
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: errors.array() });
+    }
+
+    const { email } = req.body;
+
+    // Always return the same message to prevent email enumeration
+    const successMsg = 'If that email exists, a reset link has been sent.';
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.json({ success: true, message: successMsg });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Update user record
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: hashedToken,
+        passwordResetExpires: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      },
+    });
+
+    // Send email
+    const resetUrl = `${FRONTEND_URL}/reset-password.html?token=${resetToken}`;
+
+    await EmailService.sendPasswordReset(user.email, {
+      username: user.username,
+      resetUrl,
+      expiresIn: '1 hour'
+    });
+
+    res.json({ success: true, message: successMsg });
+  } catch (err) {
+    next(err);
+  }
 };
 
 const resetPassword = async (req, res, next) => {
-  // STUB: requires passwordResetToken/passwordResetExpires columns — see verifyEmail comment above
-  throw new AppError('Password reset not yet configured', 501);
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: errors.array() });
+    }
+
+    const { token } = req.params;
+    const { password } = req.body;
+
+    if (!token || !password) {
+      throw new AppError('Token and new password are required', 400);
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await prisma.user.findFirst({
+      where: {
+        passwordResetToken: hashedToken,
+        passwordResetExpires: {
+          gt: new Date()
+        }
+      }
+    });
+
+    if (!user) {
+      throw new AppError('Token is invalid or has expired', 400, 'INVALID_TOKEN');
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    // Update user and clear reset tokens
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+        emailVerified: true, // Successfully resetting password via email link proves email ownership
+      }
+    });
+
+    // Invalidate all active sessions if possible
+    if (invalidateAllSessions) {
+      await invalidateAllSessions(user.id).catch(() => { });
+    }
+
+    // Send confirmation email
+    EmailService.sendPasswordChanged(user.email, { username: user.username }).catch(err => {
+      logger.warn(`Failed to send password changed email to ${user.email}: ${err.message}`);
+    });
+
+    res.json({ success: true, message: 'Password has been successfully updated' });
+  } catch (err) {
+    next(err);
+  }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -112,6 +112,8 @@ const ApiClient = (() => {
       refresh:   ()     => request('POST', '/auth/refresh'),
       verifyOtp: (data) => request('POST', '/auth/verify-otp',  data),
       resendOtp: (data) => request('POST', '/auth/resend-otp',  data),
+      forgotPassword: (data) => request('POST', '/auth/forgot-password', data),
+      resetPassword: (token, data) => request('POST', `/auth/reset-password/${token}`, data),
     },
 
     // ── Users ───────────────────────────────────────────────────────────
