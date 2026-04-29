@@ -212,8 +212,32 @@ const login = async (req, res, next) => {
 
     // ── Check if email is verified ──────────────────────────────────────────────
     if (!user.emailVerified) {
-      // Return 401 error since email is not verified yet.
-      return res.status(401).json({ success: false, error: 'Please verify your email first' });
+      // ── Generate new OTP, hash it, store in MongoDB, send email ────────────────────
+      const otp = generateOtp();
+      const hash = await hashOtp(otp);
+
+      await OtpRecord.upsertOtp({
+        userId: user.id,
+        email: user.email,
+        otpHash: hash,
+        ttlMinutes: 5,
+      });
+
+      // Send OTP email — non-blocking
+      EmailService.sendLoginOtp(user.email, { otp, expiryMinutes: 5 }).catch(err =>
+        logger.error(`[OTP] Email send failed for ${user.email}: ${err.message}`)
+      );
+
+      // Issue pre-auth token (short-lived, purpose: 'otp' — cannot access protected routes)
+      const preAuthToken = signPreAuthToken({ userId: user.id, email: user.email });
+
+      return res.json({
+        success: true,
+        requiresOtp: true,
+        preAuthToken,
+        maskedEmail: maskEmail(user.email),
+        message: "Email not verified. OTP sent to verify your account."
+      });
     }
 
     // ── Password is correct & email verified. Issue tokens directly. ─────────────

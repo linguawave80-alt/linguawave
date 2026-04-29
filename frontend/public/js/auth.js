@@ -152,6 +152,13 @@ const AuthModule = (() => {
     try {
       const res = await ApiClient.auth.login({ email, password });
 
+      if (res.requiresOtp) {
+        _preAuthToken = res.preAuthToken;
+        showOtpPanel(res.maskedEmail || email);
+        showToast(res.message || 'Please verify your email.', 'info');
+        return;
+      }
+
       await ApiClient.bootstrap();
       const profileRes = await ApiClient.users.me();
       setUser(profileRes.data.user);
