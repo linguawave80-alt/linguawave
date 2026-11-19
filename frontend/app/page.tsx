@@ -343,6 +343,7 @@ function Landing() {
             <nav className="lp-links" aria-label="Primary">
               <a href="#features">Features</a>
               <a href="#how">How it works</a>
+              <a href="https://deluxe-chaja-074488.netlify.app/" target="_blank" rel="noopener noreferrer">Explore</a>
             </nav>
             <div className="lp-actions">
               {user ? (
