@@ -194,7 +194,7 @@ linguawave/
 - **Node.js 20+** and npm
 - A **Firebase project** with **Firestore** enabled and **Authentication → Google** provider turned on
 - *(Optional)* a [Groq API key](https://console.groq.com/) — without it, AI features use built-in fallbacks
-- *(Optional)* a [Brevo](https://www.brevo.com/) API key and verified sender — without it, emails are not sent and, in development, the OTP is printed in the server log
+- *(Optional)* a [Brevo](https://www.brevo.com/) API key and verified sender — without it, emails are not sent and, in development, the OTP is printed in the server log.
 
 ### 6.1 Firebase setup
 
