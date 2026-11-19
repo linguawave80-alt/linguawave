@@ -1,4 +1,4 @@
-# 🌊 LinguaWave — AI-Powered Language Learning Platform
+# 🌊 LinguaWave
 
 > Speak a phrase, get instant word-by-word pronunciation feedback, practise with an AI tutor, track your progress and chat with other learners in real time.
 
