@@ -1,0 +1,6 @@
+/* Replaces next/font: the same CSS variables, fed by the Google Fonts <link> in index.html. */
+:root {
+  --font-syne: 'Syne';
+  --font-dm-sans: 'DM Sans';
+  --font-inter: 'Inter';
+}
