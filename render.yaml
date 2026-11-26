@@ -33,6 +33,15 @@ services:
         value: https://linguawave-frontend.onrender.com
       - key: ALLOWED_ORIGINS
         value: https://linguawave-frontend.onrender.com
+      # Meet (video rooms). TURN is optional; without it only STUN is offered.
+      - key: MEET_MAX_PEERS
+        value: "3"
+      - key: MEET_TURN_URLS
+        sync: false
+      - key: MEET_TURN_USERNAME
+        sync: false
+      - key: MEET_TURN_CREDENTIAL
+        sync: false
 
   # ─── Frontend: Next.js ───────────────────────────────────────────────────────
   - type: web

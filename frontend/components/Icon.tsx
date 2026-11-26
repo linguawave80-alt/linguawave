@@ -41,6 +41,15 @@ const PATHS = {
   bot: (<><rect x="4" y="8" width="16" height="11" rx="4" /><path d="M12 8V5.5" /><circle cx="12" cy="4" r="1" /><path d="M9 13v1.5" /><path d="M15 13v1.5" /></>),
   plus: (<><path d="M12 5v14" /><path d="M5 12h14" /></>),
   'arrow-right': (<><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></>),
+  // ── added for Meet (video rooms) ──
+  video: (<><rect x="3" y="6" width="13" height="12" rx="2.5" /><path d="M16 10.5l5-3v9l-5-3" /></>),
+  'video-off': (<><path d="M10 6H5.5A2.5 2.5 0 0 0 3 8.5v7A2.5 2.5 0 0 0 5.5 18h8a2.5 2.5 0 0 0 2.5-2.5V14" /><path d="M16 10.5l5-3v9l-3.2-1.9" /><path d="M3 3l18 18" /></>),
+  'mic-off': (<><path d="M15 9.3V6a3 3 0 0 0-5.9-.8" /><path d="M9 9v3a3 3 0 0 0 4.7 2.5" /><path d="M19 11a7 7 0 0 1-.9 3.4" /><path d="M5 11a7 7 0 0 0 10.4 6.1" /><path d="M12 18v3" /><path d="M3 3l18 18" /></>),
+  monitor: (<><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8" /><path d="M12 16v4" /></>),
+  hand: (<><path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10.5V4a1.5 1.5 0 0 1 3 0v6.5" /><path d="M14 10V5.5a1.5 1.5 0 0 1 3 0V13" /><path d="M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a5 5 0 0 1-4-2L4.6 13.4a1.5 1.5 0 0 1 2.3-1.9L8 12.7" /></>),
+  captions: (<><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M10.5 10.3a2 2 0 1 0 0 3.4" /><path d="M17 10.3a2 2 0 1 0 0 3.4" /></>),
+  'phone-off': <path d="M3.5 14.6c4.7-3.6 12.3-3.6 17 0 .6.5.7 1.4.1 2l-1.3 1.5a1.4 1.4 0 0 1-1.7.3l-2.3-1.2a1.4 1.4 0 0 1-.8-1.3V14.5c-1.7-.5-3.5-.5-5.2 0v1.4c0 .5-.3 1-.8 1.3l-2.3 1.2a1.4 1.4 0 0 1-1.7-.3l-1.3-1.5a1.4 1.4 0 0 1 .1-2Z" />,
+  copy: (<><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.5" /><path d="M15.5 8.5V6.5A2.5 2.5 0 0 0 13 4H6.5A2.5 2.5 0 0 0 4 6.5V13a2.5 2.5 0 0 0 2.5 2.5h2" /></>),
 } as const;
 
 export type IconName = keyof typeof PATHS;

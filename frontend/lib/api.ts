@@ -130,6 +130,9 @@ export const api = {
   conversation: {
     chat: (d: any) => request('POST', '/conversation/chat', d),
   },
+  meet: {
+    ice: () => request('GET', '/meet/ice'),
+  },
 };
 
 export type User = {

@@ -1,8 +1,8 @@
 ========================================================================
 COMBINED CODE FILE
-Generated : 2026-11-19T18:05:13.601Z
+Generated : 2026-11-26T09:12:15.619Z
 Root      : /Users/paras/Projects/02_Personal/Linguwave
-Files     : 124
+Files     : 146
 ========================================================================
 
 ========================================================================
@@ -41,7 +41,8 @@ FILE: README.md
 14. [Deployment (Render)](#14-deployment-render)
 15. [Troubleshooting](#15-troubleshooting)
 16. [Legacy Files & Cleanup Notes](#16-legacy-files--cleanup-notes)
-17. [License](#17-license)
+17. [Meet (video rooms)](#17-meet-video-rooms)
+18. [License](#18-license)
 
 ---
 
@@ -156,7 +157,8 @@ linguawave/
 │   ├── prisma/                    # ⚠ LEGACY (pre-Firebase PostgreSQL schema + migrations)
 │   ├── tests/
 │   │   ├── auth.test.js           # register / login / Google sign-in / health / 404
-│   │   └── integration.test.js    # frontend⇄backend contract + Socket.IO
+│   │   ├── integration.test.js    # frontend⇄backend contract + Socket.IO
+│   │   └── meet.test.js           # Meet signaling, room cap, host actions, abuse guards
 │   └── src/
 │       ├── server.js              # HTTP server + Socket.IO + bootstrap + graceful shutdown
 │       ├── app.js                 # Express app, middleware, route mounting
@@ -176,6 +178,7 @@ linguawave/
 │       │                          # languages, conversation, phrases
 │       ├── Services/emailService.js   # Brevo: welcome, OTP, verify, reset, password-changed
 │       ├── sockets/socketManager.js   # chat, presence, session & feedback events
+│       ├── sockets/meetSocket.js      # Meet: WebRTC signaling, rooms, host controls
 │       └── utils/                 # jwtHelper, otpHelper, fetchRetry, logger,
 │                                  # username, validation, fileStream (fs + zlib + streams)
 │
@@ -192,7 +195,10 @@ linguawave/
 │
 └── frontend-react/                # React + Vite port (same UI, same CSS, same API calls)
     ├── vite.config.js             # dev & preview on :3000
-    └── src/{pages,components,lib,styles}
+    ├── public/{sign_model.json,hand_landmarker.task}   # on-device sign recognition assets
+    └── src/{pages,components,lib,styles}   # Meet: pages/dashboard/Meet*.jsx, lib/meet/*, styles/meet.css
+
+ml/                                # export_model.py + parity fixtures for the sign model
 ```
 
 ---
@@ -204,7 +210,7 @@ linguawave/
 - **Node.js 20+** and npm
 - A **Firebase project** with **Firestore** enabled and **Authentication → Google** provider turned on
 - *(Optional)* a [Groq API key](https://console.groq.com/) — without it, AI features use built-in fallbacks
-- *(Optional)* a [Brevo](https://www.brevo.com/) API key and verified sender — without it, emails are not sent and, in development, the OTP is printed in the server log
+- *(Optional)* a [Brevo](https://www.brevo.com/) API key and verified sender — without it, emails are not sent and, in development, the OTP is printed in the server log.
 
 ### 6.1 Firebase setup
 
@@ -293,6 +299,10 @@ Open <http://localhost:3000>, register an account, and (in dev, with no `BREVO_A
 | `EMAIL_FROM` | – | – | Sender verified in Brevo |
 | `RATE_LIMIT_WINDOW_MS` | – | `900000` | General limiter window |
 | `RATE_LIMIT_MAX` | – | `600` | Requests per window per user/IP |
+| `MEET_MAX_PEERS` | – | `3` | Max people per Meet room (WebRTC mesh: each browser keeps `n-1` connections) |
+| `MEET_MAX_ROOMS` | – | `100` | Max simultaneous Meet rooms on this instance (memory guard) |
+| `MEET_CREATE_LIMIT` / `MEET_CREATE_WINDOW_S` | – | `5` / `600` | Rooms one user may create per window |
+| `MEET_TURN_URLS` / `MEET_TURN_USERNAME` / `MEET_TURN_CREDENTIAL` | – | – | Optional TURN relay (comma-separated URLs). Without all three only STUN is offered |
 | `LOG_LEVEL` | – | `info` | Winston level |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALLBACK_URL` | – | – | Only for the **legacy** Passport strategy (not used by the current Firebase flow) |
 
@@ -319,7 +329,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 ### 7.3 Vite frontend (`frontend-react/.env`)
 
-Same as above with the prefix `VITE_` (`VITE_API_URL`, `VITE_SOCKET_URL`, `VITE_FIREBASE_*`).
+Same as above with the prefix `VITE_` (`VITE_API_URL`, `VITE_SOCKET_URL`, `VITE_FIREBASE_*`). `VITE_SOCKET_URL` defaults to `VITE_API_URL` without `/api/v1`. Meet uses both: REST for `/meet/ice`, Socket.IO for signaling.
 
 ---
 
@@ -513,6 +523,7 @@ Only the last 6 history messages are sent to the model.
 |--------|----------|-------------|
 | GET | `/health` | Liveness probe (used by Render) |
 | GET | `/api` | Endpoint index |
+| GET | `/meet/ice` | ICE servers for WebRTC (auth required): STUN always, TURN if configured |
 
 ---
 
@@ -552,6 +563,18 @@ Connections without a valid token (or for a deleted user) are rejected.
 | `pronunciation:feedback` | `object + timestamp` | Multi-device feedback |
 
 Every socket also auto-joins a private `user:<id>` room for targeted delivery.
+
+**Meet events** (see [§17](#17-meet-video-rooms)):
+
+| Direction | Event | Payload |
+|-----------|-------|---------|
+| → server | `meet:join` (ack) | `{ roomId, create }` → `{ ok, selfId, hostId, peers:[{id,name,userId}], max }` or `{ ok:false, error }` (`invalid-room`, `not-found`, `room-full`, `rate-limited`, `server-busy`) |
+| → server | `meet:signal` | `{ to, data }` where `data` is `{type:'offer'\|'answer', sdp}` or `{type:'candidate', candidate}`; relayed to one peer in the same room |
+| → server | `meet:leave`, `meet:end` | host-only for `end` |
+| → server | `meet:kick`, `meet:mute` | `{ target }` (host only; `target` is a socket id) |
+| ← client | `meet:peer-joined` / `meet:peer-left` | `{ id, name, userId }` / `{ id }` |
+| ← client | `meet:signal` | `{ from, data }` |
+| ← client | `meet:host-changed` / `meet:force-mute` / `meet:kicked` / `meet:ended` | `{ hostId }` / – / – / – |
 
 ---
 
@@ -603,7 +626,10 @@ Tests run with Firebase, models and e-mail **mocked** — no network or credenti
 | Suite | What it covers |
 |-------|----------------|
 | `auth.test.js` | Register validation, duplicate / race-condition `409`, OTP-on-register, login errors, **Google sign-in** (invalid token, non-Google provider, unverified email, new user, account linking, pre-hijack password wipe), `/health`, unknown route `404` |
+| `meet.test.js` | **Meet**: create + join, 4th person gets `room-full`, `not-found` / `invalid-room`, signals reach only the target in the same room, malformed / oversized signals dropped, non-hosts cannot kick / mute / end, host kick, host handover, disconnect cleanup, 300-signals-per-10 s flood guard, per-user room-creation limit, garbage payloads never crash the server |
 | `integration.test.js` | **Frontend ⇄ backend contract**: Gmail dots preserved, readable validation errors, OTP right/wrong + lockout can't be bypassed, pre-auth token can't be used as access token, `/users/me` shape, refresh rotation + grace replay, speech analysis without a key, session create → list, trend & leaderboard include usernames, tutor/phrase fallbacks, CORS preflight (allowed vs unknown origin), password-reset link, **Socket.IO** auth rejection and two-client room messaging |
+
+**Frontend tests** (`frontend-react`, Vitest + jsdom): `npm test` runs the `useMeetRoom` hook tests (signaling order, ICE queueing, data channel, reconnect, host identity), the sign-model **parity test** (JS classifier vs. the Python reference in `ml/sign_model.fixtures.json`, tolerance 0.001), captioner and slow-device-guard unit tests, and a check that the MediaPipe WASM version in `signEngine.js` equals the exact pin in `package.json`.
 
 **Manual smoke test**
 
@@ -639,7 +665,7 @@ curl -X POST http://localhost:5000/api/v1/auth/register \
 
 **Deploying the Vite frontend:** build with `npm install && npm run build`, publish `dist/` as a static site, and add a rewrite `/* → /index.html` (`public/_redirects` and `vercel.json` are included for Netlify/Vercel).
 
-**Cross-site cookies:** the refresh cookie is `httpOnly`, `secure` in production, and sent with `credentials: 'include'`, so the frontend origin **must** be in `ALLOWED_ORIGINS`.
+**Cross-site cookies:** the refresh cookie is `httpOnly`, `secure` in production, and sent with `credentials: 'include'`, so the frontend origin **must** be in `ALLOWED_ORIGINS`. See [§17.5](#175-vercel--render) for the Vercel + Render case.
 
 ---
 
@@ -680,7 +706,83 @@ Also worth tidying: the in-app route comment on `/auth/verify-otp` says OTP is "
 
 ---
 
-## 17. License
+## 17. Meet (video rooms)
+
+A video room inside the logged-in dashboard (`/dashboard/meet`). Up to **3 people** per room, any number of rooms. Besides the usual controls (mic, camera, screen share, chat, participant list, host mute / remove / end for everyone) it has two accessibility features: **live speech captions** and **sign-gesture captions**.
+
+### 17.1 How it works
+
+```mermaid
+flowchart LR
+  A["Browser A"] <-- "WebRTC: audio, video, data channel 'meet'" --> B["Browser B"]
+  A <-- "WebRTC" --> C["Browser C"]
+  B <-- "WebRTC" --> C
+  A -. "Socket.IO signaling only" .-> S["Backend (meetSocket.js)"]
+  B -.-> S
+  C -.-> S
+```
+
+- **Peer-to-peer mesh.** Audio and video never touch the server. With 3 people each browser holds 2 peer connections. The server only relays SDP / ICE over the existing authenticated Socket.IO connection and enforces the room cap.
+- **No glare.** The newcomer always sends the offers to people already in the room; existing members only answer.
+- **Data channel `meet`** carries `{type:"caption", source:"speech", text, final}`, `{type:"caption", source:"sign", text}`, `{type:"chat", text}` and `{type:"state", mic, cam, signing}`. Chat is **not stored** anywhere and disappears with the meeting. Senders' names always come from the server, never from the message.
+- **Room codes** look like `abc-defg-hij`, generated with `crypto.getRandomValues`. A room exists only while someone is in it. Joining a code that does not exist returns `not-found`; only "Start a meeting" creates rooms.
+- **Screen share** swaps the video track with `RTCRtpSender.replaceTrack` (no renegotiation).
+
+### 17.2 Captions
+
+| | Speech captions | Sign captions |
+|--|-----------------|---------------|
+| Engine | Chrome Web Speech API (`useSpeech.js`) | MediaPipe HandLandmarker + a small MLP, both in the browser |
+| Privacy | Chrome sends your audio to **Google's speech service** while it is on | Runs on your device; no video frame leaves the browser |
+| Look | Name + text, white on dark | Amber line with a hand icon, plus a "Signing" badge on the tile |
+| Expiry | After ~6 s of silence | After 4 s of no signing |
+
+Sign mode loads the MediaPipe bundle only when switched on, reads the raw local `<video>`, draws the hand skeleton on a canvas over your tile, and switches itself off (with a toast) if frames keep taking too long (average > 150 ms over 30 frames). A small debug pill on your own tile shows the label, confidence and ms per frame. Sign mode pauses while the camera is off or you are sharing your screen. Chrome desktop is the supported target; other browsers degrade (for example no speech captions, but you can still read others').
+
+### 17.3 Hardening
+
+- Server validates everything: room-code format, boolean `create`, signal type and size (16 KB), target must be in the **same room**, host-only actions, and every listener is wrapped so a malformed payload cannot crash the process.
+- Per-user limits (keyed by user id, so extra tabs or reconnects do not reset them): 5 room creations per 10 minutes, 30 join attempts per minute, 300 signals per 10 s per socket, and at most `MEET_MAX_ROOMS` rooms per instance.
+- A rejected join never ejects you from the room you are already in.
+- Accessibility: labelled, `aria-pressed` toggle buttons, a screen-reader live region that announces each person's caption once it is stable (the visible caption lines are `aria-hidden`), focus moves into the side panel / caption popover on open and back to its button on close or <kbd>Esc</kbd>, visible focus rings, `prefers-reduced-motion` respected.
+
+### 17.4 Retraining the sign model
+
+```bash
+pip install pandas scikit-learn numpy
+python ml/export_model.py <dataset.csv> frontend-react/public/sign_model.json
+```
+
+The CSV has 63 landmark columns (21 × x, y, z) plus a label column. The script trains an MLP with mirror and jitter augmentation, writes the weights as plain JSON, and writes `sign_model.fixtures.json` next to it. Move that file to `ml/` and run `npm test` in `frontend-react`: the parity test fails if the browser classifier disagrees with Python. The labels in `sign_model.json` are the words the app can recognise.
+
+### 17.5 Vercel + Render
+
+Zero-cost setup: frontend on Vercel (static build of `frontend-react`), backend on Render.
+
+1. **Render (backend):** set `FRONTEND_URL` and `ALLOWED_ORIGINS` to the Vercel URL (no trailing slash or path). `ALLOWED_ORIGINS` is an **exact-match** list, so a Vercel preview URL (`*.vercel.app`) must be added explicitly. It applies to REST and Socket.IO.
+2. **Vercel (frontend):** set `VITE_API_URL=https://<your-backend>.onrender.com/api/v1` and `VITE_SOCKET_URL=https://<your-backend>.onrender.com` (plus the `VITE_FIREBASE_*` values). They are baked in at build time, so redeploy after changing them. Keep the SPA rewrite `/* → /index.html`.
+3. Add the Vercel domain to Firebase **Authorized domains**.
+4. **Cold starts:** the free Render plan sleeps when idle, so the Meet lobby pings `/health` and shows "Waking server…". Starting a meeting right after a cold start can take a while.
+5. **TURN (optional):** STUN alone fails for some strict NATs and corporate networks. Set `MEET_TURN_URLS`, `MEET_TURN_USERNAME`, `MEET_TURN_CREDENTIAL` to any TURN provider you choose. Check that provider's current terms and quotas yourself.
+
+**Refresh-cookie check (no behaviour was changed).** `authController.js` sets the refresh cookie with `httpOnly: true`, `secure: isProd`, `sameSite: isProd ? 'none' : 'lax'`, so in production it is already `SameSite=None; Secure`, which is what a cross-domain Vercel + Render deployment needs. The access token is kept in memory on the client, as before. One limit remains: when the frontend (`*.vercel.app`) and backend (`*.onrender.com`) are different sites, the refresh cookie is a **third-party cookie**, and browsers that block those (Safari, Firefox strict mode, Chrome with third-party cookies blocked) will not send it, so those users are asked to sign in again when the 15-minute access token expires. The robust fix is to serve both from one registrable domain (for example `app.example.com` and `api.example.com`), which is a deployment choice rather than a code change.
+
+### 17.6 Manual test checklist
+
+1. Three browser profiles (ideally two networks) log in; A starts a meeting, B and C join with the code or link. Everyone sees and hears everyone.
+2. A fourth profile gets "This meeting is full (3 people maximum)." A typo'd code gets "does not exist"; `abc` shows an invalid-code message.
+3. Mic / camera toggles update the other tiles; the camera light goes off when the camera is off and after leaving.
+4. Screen share shows on the others' screens; the browser's own "Stop sharing" bar ends it and restores the camera.
+5. Chat arrives on both others; reload and confirm it is gone. Only the host sees Mute / Remove / End for all.
+6. Host mutes B (B's mic goes off and B sees a toast). Host removes C (C sees "removed", others see C leave). Host leaves: another person becomes host. End for all: everyone is sent out.
+7. Close a tab mid-call: the others see that person leave within seconds and the room stays usable.
+8. Turn on "Caption my speech" in Chrome: the others see the line within about a second; it clears after ~6 s of silence. Turn sign mode on, make a trained sign: an amber line appears under your tile for everyone, clearing after 4 s.
+9. Put the laptop to sleep or drop Wi-Fi briefly: "Reconnecting…", then the call is rebuilt.
+10. Keyboard only: reach every control with Tab, open Chat (focus lands in the panel), <kbd>Esc</kbd> returns focus to the Chat button. With a screen reader, remote captions are announced.
+
+---
+
+## 18. License
 
 MIT © 2026 LinguaWave — *(the previous README declared MIT; add a `LICENSE` file to the repo root to make it official).*
 
@@ -823,6 +925,19 @@ RATE_LIMIT_MAX=600
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
 LOG_LEVEL=info
+
+# ─── Meet (video rooms) ──────────────────────────────────────────────────────
+# Max participants per room (WebRTC mesh: 3 => 2 peer connections per browser).
+MEET_MAX_PEERS=3
+# Max simultaneous rooms on this instance, and per-user room creation limit.
+MEET_MAX_ROOMS=100
+MEET_CREATE_LIMIT=5
+MEET_CREATE_WINDOW_S=600
+# Optional TURN relay for peers behind strict NATs. STUN is always offered.
+# Use any provider you like; leave empty to run STUN-only.
+# MEET_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349
+# MEET_TURN_USERNAME=
+# MEET_TURN_CREDENTIAL=
 
 ========================================================================
 FILE: backend/jest.config.js
@@ -1689,6 +1804,7 @@ const adminRoutes = require('./routes/v1/adminRoutes');
 const languageRoutes = require('./routes/v1/languageRoutes');
 const conversationRoutes = require('./routes/v1/conversationRoutes');
 const phraseRoutes = require('./routes/v1/phraseRoutes');
+const meetRoutes = require('./routes/v1/meetRoutes');
 
 
 // ✅ CREATE APP FIRST
@@ -1757,6 +1873,7 @@ app.use(`${API_V1}/admin`, adminRoutes);
 app.use(`${API_V1}/languages`, languageRoutes);
 app.use(`${API_V1}/conversation`, conversationRoutes);
 app.use(`${API_V1}/phrases`, phraseRoutes);
+app.use(`${API_V1}/meet`, meetRoutes);
 
 // ─── API Docs ────────────────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
@@ -1775,7 +1892,8 @@ app.get('/api', (req, res) => {
       'GET  /api/v1/chat/messages',
       'GET  /api/v1/phrases/daily',
       'GET  /api/v1/phrases/random',
-      'POST /api/v1/conversation/chat'
+      'POST /api/v1/conversation/chat',
+      'GET  /api/v1/meet/ice'
     ],
   });
 });
@@ -5516,6 +5634,28 @@ router.post('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
 module.exports = router;
 
 ========================================================================
+FILE: backend/src/routes/v1/meetRoutes.js
+========================================================================
+// src/routes/v1/meetRoutes.js — ICE server list for WebRTC (STUN always, TURN when configured).
+'use strict';
+const { Router } = require('express');
+const { authenticate } = require('../../middleware/authMiddleware');
+
+const router = Router();
+router.use(authenticate);
+
+router.get('/ice', (req, res) => {
+  const iceServers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+  const urls = (process.env.MEET_TURN_URLS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (urls.length && process.env.MEET_TURN_USERNAME && process.env.MEET_TURN_CREDENTIAL) {
+    iceServers.push({ urls, username: process.env.MEET_TURN_USERNAME, credential: process.env.MEET_TURN_CREDENTIAL });
+  }
+  res.json({ success: true, data: { iceServers } });
+});
+
+module.exports = router;
+
+========================================================================
 FILE: backend/src/routes/v1/phraseRoutes.js
 ========================================================================
 // src/routes/v1/phraseRoutes.js
@@ -6006,6 +6146,147 @@ bootstrap();
 module.exports = { server, serverEvents };
 
 ========================================================================
+FILE: backend/src/sockets/meetSocket.js
+========================================================================
+// src/sockets/meetSocket.js
+// WebRTC *signaling only* for LinguaWave Meet. Audio/video/captions/chat never touch this server;
+// they flow peer-to-peer. Runs on the existing authenticated Socket.IO connection (socket.user is set
+// by the JWT middleware in socketManager.js).
+'use strict';
+
+const { RateLimiterMemory } = require('rate-limiter-flexible');
+const logger = require('../utils/logger');
+
+const MAX_PEERS = Number(process.env.MEET_MAX_PEERS || 3);          // hard cap: 3 people per room (each person sends 2 video streams)
+const ROOM_RE = /^[a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{3}$/;            // abc-defg-hij
+const MAX_SIGNAL_BYTES = 16 * 1024;                                 // SDP is a few KB
+const MAX_ROOMS = Number(process.env.MEET_MAX_ROOMS || 100);        // memory guard for the single free-tier instance
+const SIGNAL_TYPES = new Set(['offer', 'answer', 'candidate']);
+const SID_RE = /^[\w-]{1,40}$/;
+
+// Per-USER limits (keyed by user id, so reconnecting or opening more tabs does not reset them).
+// Creating rooms is the expensive/abusable action; join attempts are limited too so room codes cannot be probed.
+const createLimiter = new RateLimiterMemory({
+  keyPrefix: 'meet_create',
+  points: Number(process.env.MEET_CREATE_LIMIT || 5),
+  duration: Number(process.env.MEET_CREATE_WINDOW_S || 600),
+});
+const joinLimiter = new RateLimiterMemory({ keyPrefix: 'meet_join', points: 30, duration: 60 });
+
+// roomId -> { hostSid, peers: Map<sid, { userId, name }> }
+const rooms = new Map();
+
+function leaveRoom(io, socket) {
+  const roomId = socket.data.meetRoom;
+  if (!roomId) return;
+  socket.data.meetRoom = null;
+  socket.leave(`meet:${roomId}`);
+  const room = rooms.get(roomId);
+  if (!room) return;
+  room.peers.delete(socket.id);
+  socket.to(`meet:${roomId}`).emit('meet:peer-left', { id: socket.id });
+  if (room.peers.size === 0) { rooms.delete(roomId); return; }
+  if (room.hostSid === socket.id) {                                  // hand the host role to the longest-present peer
+    room.hostSid = room.peers.keys().next().value;
+    io.to(`meet:${roomId}`).emit('meet:host-changed', { hostId: room.hostSid });
+  }
+}
+
+// An exception thrown inside a socket.io listener is an uncaught exception and would take the whole
+// server down, so every listener goes through this. Malformed payloads (null, strings, ...) are just ignored.
+const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+const safe = (fn) => (...args) => { try { return fn(...args); } catch (e) { logger.warn(`meet handler error: ${e.message}`); } };
+
+/** Valid signal: {type:'offer'|'answer', sdp:string} or {type:'candidate', candidate:object|null}, small. */
+function validSignal(data) {
+  if (!isObj(data) || !SIGNAL_TYPES.has(data.type)) return false;
+  if (data.type === 'candidate') { if (data.candidate != null && !isObj(data.candidate)) return false; }
+  else if (typeof data.sdp !== 'string') return false;
+  return JSON.stringify(data).length <= MAX_SIGNAL_BYTES;
+}
+
+function registerMeetHandlers(io, socket) {
+  const { user } = socket;
+  const displayName = String(user.username || 'Guest').slice(0, 40);
+  let signalCount = 0;
+  const tick = setInterval(() => { signalCount = 0; }, 10_000);
+  tick.unref?.();
+
+  socket.on('meet:join', safe(async (payload, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const { roomId, create } = isObj(payload) ? payload : {};
+    if (typeof roomId !== 'string' || !ROOM_RE.test(roomId)) return reply({ ok: false, error: 'invalid-room' });
+    if (create !== undefined && typeof create !== 'boolean') return reply({ ok: false, error: 'invalid-room' });
+
+    try { await joinLimiter.consume(user.id); } catch { return reply({ ok: false, error: 'rate-limited' }); }
+    if (socket.data.meetRoom === roomId) leaveRoom(io, socket);       // re-join of the same room: start clean
+
+    let room = rooms.get(roomId);
+    if (!room) {
+      if (!create) return reply({ ok: false, error: 'not-found' });   // typo'd IDs must not spawn ghost rooms
+      if (rooms.size >= MAX_ROOMS) return reply({ ok: false, error: 'server-busy' });
+      try { await createLimiter.consume(user.id); } catch { return reply({ ok: false, error: 'rate-limited' }); }
+      room = rooms.get(roomId);                                       // another socket may have created it while we awaited
+      if (!room) { room = { hostSid: socket.id, peers: new Map() }; rooms.set(roomId, room); }
+    }
+    if (!socket.connected) { if (room.peers.size === 0) rooms.delete(roomId); return; }   // dropped while awaiting
+    if (room.peers.size >= MAX_PEERS) return reply({ ok: false, error: 'room-full' });
+
+    if (socket.data.meetRoom) leaveRoom(io, socket);                  // only now (a rejected join must not eject you from your current room)
+    const existing = [...room.peers].map(([id, p]) => ({ id, name: p.name, userId: p.userId }));
+    room.peers.set(socket.id, { userId: user.id, name: displayName });
+    socket.data.meetRoom = roomId;
+    socket.join(`meet:${roomId}`);
+    socket.to(`meet:${roomId}`).emit('meet:peer-joined', { id: socket.id, name: displayName, userId: user.id });
+    logger.info(`meet: ${displayName} joined ${roomId} (${room.peers.size}/${MAX_PEERS})`);
+    reply({ ok: true, selfId: socket.id, hostId: room.hostSid, peers: existing, max: MAX_PEERS });
+  }));
+
+  // Relay SDP / ICE to one peer in the SAME room only.
+  socket.on('meet:signal', safe((payload) => {
+    if (!isObj(payload)) return;
+    const { to, data } = payload;
+    const roomId = socket.data.meetRoom;
+    const room = roomId && rooms.get(roomId);
+    if (!room || typeof to !== 'string' || !SID_RE.test(to) || !room.peers.has(to)) return;
+    if (++signalCount > 300) return;                                  // flood guard: 300 signals / 10 s
+    if (!validSignal(data)) return;
+    io.to(to).emit('meet:signal', { from: socket.id, data });
+  }));
+
+  // Host-only moderation. The client emits meet:end / meet:kick {target} / meet:mute {target};
+  // the older single meet:host {action, target} form is still accepted.
+  const hostAction = (action, payload) => {
+    const roomId = socket.data.meetRoom;
+    const room = roomId && rooms.get(roomId);
+    if (!room || room.hostSid !== socket.id) return;                  // non-hosts are silently ignored
+    if (action === 'end') {
+      io.to(`meet:${roomId}`).emit('meet:ended');
+      for (const sid of room.peers.keys()) { const s = io.sockets.sockets.get(sid); if (s) { s.data.meetRoom = null; s.leave(`meet:${roomId}`); } }
+      rooms.delete(roomId);
+      return;
+    }
+    const target = isObj(payload) ? payload.target : undefined;
+    if (typeof target !== 'string' || target === socket.id || !room.peers.has(target)) return;
+    if (action === 'mute') io.to(target).emit('meet:force-mute');
+    if (action === 'kick') {
+      io.to(target).emit('meet:kicked');
+      const s = io.sockets.sockets.get(target);
+      if (s) leaveRoom(io, s);
+    }
+  };
+  socket.on('meet:end', safe(() => hostAction('end')));
+  socket.on('meet:kick', safe((p) => hostAction('kick', p)));
+  socket.on('meet:mute', safe((p) => hostAction('mute', p)));
+  socket.on('meet:host', safe((p) => { if (isObj(p) && ['end', 'kick', 'mute'].includes(p.action)) hostAction(p.action, p); }));
+
+  socket.on('meet:leave', safe(() => leaveRoom(io, socket)));
+  socket.on('disconnect', () => { clearInterval(tick); leaveRoom(io, socket); });
+}
+
+module.exports = { registerMeetHandlers, _rooms: rooms, _limiters: { createLimiter, joinLimiter } };
+
+========================================================================
 FILE: backend/src/sockets/socketManager.js
 ========================================================================
 // src/sockets/socketManager.js
@@ -6020,6 +6301,7 @@ const User = require('../models/firestore/User');
 const ChatMessage = require('../models/firestore/ChatMessage');
 const logger = require('../utils/logger');
 const { originCallback } = require('../config/cors');
+const { registerMeetHandlers } = require('./meetSocket');
 
 const isValidRoom = (r) => typeof r === 'string' && /^[\w-]{1,40}$/.test(r);
 
@@ -6079,6 +6361,9 @@ function initSocket(httpServer) {
 
     // Join personal room for targeted messages
     socket.join(`user:${user.id}`);
+
+    // Meet (WebRTC signaling, rooms capped at MEET_MAX_PEERS)
+    registerMeetHandlers(io, socket);
 
     // Broadcast updated online count
     io.emit('users:online', connectedUsers.size);
@@ -7303,6 +7588,203 @@ describe('Socket.IO (community page)', () => {
 });
 
 ========================================================================
+FILE: backend/tests/meet.test.js
+========================================================================
+// tests/meet.test.js — Meet signaling (rooms, cap, relay, host actions, abuse guards).
+// Spins up a real socket.io server on a random port with a stubbed `socket.user`, so no Firestore/JWT is needed.
+'use strict';
+
+jest.mock('../src/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
+
+const http = require('http');
+const { Server } = require('socket.io');
+const { io: connect } = require('socket.io-client');
+const { registerMeetHandlers, _rooms, _limiters } = require('../src/sockets/meetSocket');
+
+let httpServer, io, port;
+const clients = [];
+
+beforeAll((done) => {
+  httpServer = http.createServer();
+  io = new Server(httpServer);
+  io.use((socket, next) => {                                         // stand-in for the JWT middleware in socketManager.js
+    const { uid, name } = socket.handshake.auth;
+    socket.user = { id: uid, username: name, role: 'USER' };
+    next();
+  });
+  io.on('connection', (socket) => registerMeetHandlers(io, socket));
+  httpServer.listen(0, () => { port = httpServer.address().port; done(); });
+});
+
+afterAll((done) => { io.close(); httpServer.close(done); });
+
+afterEach(async () => {
+  clients.splice(0).forEach((c) => c.disconnect());
+  await wait(30);
+  _rooms.clear();
+  await Promise.all(['meet_create', 'meet_join'].map(() => null));
+  for (const l of Object.values(_limiters)) { await l.delete('u-test').catch(() => {}); for (const u of ['alice', 'bob', 'cy', 'dee', 'flood', 'spam']) await l.delete(u).catch(() => {}); }
+});
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Connected client for user `uid`; records every event it receives in `.got`. */
+function client(uid) {
+  const c = connect(`http://localhost:${port}`, { auth: { uid, name: uid.toUpperCase() }, transports: ['websocket'], forceNew: true });
+  c.got = [];
+  c.onAny((ev, p) => c.got.push([ev, p]));
+  clients.push(c);
+  return new Promise((res) => c.on('connect', () => res(c)));
+}
+const join = (c, roomId, create = false) => new Promise((res) => c.emit('meet:join', { roomId, create }, res));
+const events = (c, name) => c.got.filter(([e]) => e === name).map(([, p]) => p);
+const ROOM = 'abc-defg-hij';
+
+describe('meet signaling', () => {
+  it('creates a room, then others join and see the existing peers', async () => {
+    const a = await client('alice'); const b = await client('bob');
+    const ra = await join(a, ROOM, true);
+    expect(ra).toMatchObject({ ok: true, hostId: a.id, peers: [], max: 3 });
+    const rb = await join(b, ROOM);
+    expect(rb.ok).toBe(true);
+    expect(rb.peers).toEqual([{ id: a.id, name: 'ALICE', userId: 'alice' }]);
+    await wait(30);
+    expect(events(a, 'meet:peer-joined')).toEqual([{ id: b.id, name: 'BOB', userId: 'bob' }]);
+  });
+
+  it('refuses the 4th person with room-full', async () => {
+    const [a, b, c, d] = await Promise.all(['alice', 'bob', 'cy', 'dee'].map(client));
+    await join(a, ROOM, true); await join(b, ROOM); await join(c, ROOM);
+    expect(await join(d, ROOM)).toEqual({ ok: false, error: 'room-full' });
+    expect(_rooms.get(ROOM).peers.size).toBe(3);
+  });
+
+  it('joining a nonexistent room without create:true gives not-found (and creates nothing)', async () => {
+    const a = await client('alice');
+    expect(await join(a, ROOM)).toEqual({ ok: false, error: 'not-found' });
+    expect(_rooms.has(ROOM)).toBe(false);
+  });
+
+  it.each(['', 'nope', 'ABC-DEFG-HIJ', 'abc-defg-hij-k', '../etc', null, 42, { a: 1 }])('rejects invalid room id %j', async (id) => {
+    const a = await client('alice');
+    expect(await join(a, id, true)).toEqual({ ok: false, error: 'invalid-room' });
+  });
+
+  it('rejects a non-boolean create flag and a malformed payload', async () => {
+    const a = await client('alice');
+    expect(await new Promise((r) => a.emit('meet:join', { roomId: ROOM, create: 'yes' }, r))).toEqual({ ok: false, error: 'invalid-room' });
+    expect(await new Promise((r) => a.emit('meet:join', null, r))).toEqual({ ok: false, error: 'invalid-room' });
+  });
+
+  it('relays signals only to the target, only inside the same room', async () => {
+    const [a, b, c, outsider] = await Promise.all(['alice', 'bob', 'cy', 'dee'].map(client));
+    await join(a, ROOM, true); await join(b, ROOM); await join(c, ROOM);
+    await join(outsider, 'xyz-wxyz-abc', true);
+    const offer = { type: 'offer', sdp: 'v=0' };
+    a.emit('meet:signal', { to: b.id, data: offer });
+    outsider.emit('meet:signal', { to: b.id, data: offer });          // different room: must be dropped
+    a.emit('meet:signal', { to: outsider.id, data: offer });          // target in another room: dropped
+    await wait(80);
+    expect(events(b, 'meet:signal')).toEqual([{ from: a.id, data: offer }]);
+    expect(events(c, 'meet:signal')).toHaveLength(0);
+    expect(events(outsider, 'meet:signal')).toHaveLength(0);
+  });
+
+  it('drops malformed, oversized and wrongly typed signals without crashing the server', async () => {
+    const a = await client('alice'); const b = await client('bob');
+    await join(a, ROOM, true); await join(b, ROOM);
+    for (const bad of [null, 'x', 5, [], {}, { to: b.id }, { to: b.id, data: 'str' }, { to: b.id, data: { type: 'evil', sdp: 'x' } },
+      { to: b.id, data: { type: 'offer' } }, { to: b.id, data: { type: 'offer', sdp: 'x'.repeat(20000) } }, { to: 123, data: { type: 'offer', sdp: 'x' } }]) a.emit('meet:signal', bad);
+    a.emit('meet:signal', { to: b.id, data: { type: 'candidate', candidate: { candidate: 'c' } } });
+    await wait(100);
+    expect(events(b, 'meet:signal')).toEqual([{ from: a.id, data: { type: 'candidate', candidate: { candidate: 'c' } } }]);
+    expect(a.connected).toBe(true);
+  });
+
+  it('flood guard drops signals beyond 300 per 10 s', async () => {
+    const a = await client('alice'); const b = await client('bob');
+    await join(a, ROOM, true); await join(b, ROOM);
+    for (let i = 0; i < 350; i++) a.emit('meet:signal', { to: b.id, data: { type: 'candidate', candidate: { i } } });
+    await wait(400);
+    expect(events(b, 'meet:signal')).toHaveLength(300);
+  });
+
+  it('non-host cannot kick, mute or end', async () => {
+    const a = await client('alice'); const b = await client('bob'); const c = await client('cy');
+    await join(a, ROOM, true); await join(b, ROOM); await join(c, ROOM);
+    b.emit('meet:kick', { target: c.id }); b.emit('meet:mute', { target: c.id }); b.emit('meet:end');
+    b.emit('meet:host', { action: 'kick', target: c.id });
+    await wait(80);
+    expect(events(c, 'meet:kicked')).toHaveLength(0);
+    expect(events(c, 'meet:force-mute')).toHaveLength(0);
+    expect(events(a, 'meet:ended')).toHaveLength(0);
+    expect(_rooms.get(ROOM).peers.size).toBe(3);
+  });
+
+  it('host can mute; host kick removes the target and emits meet:kicked', async () => {
+    const a = await client('alice'); const b = await client('bob');
+    await join(a, ROOM, true); await join(b, ROOM);
+    a.emit('meet:mute', { target: b.id });
+    await wait(50);
+    expect(events(b, 'meet:force-mute')).toHaveLength(1);
+    a.emit('meet:kick', { target: b.id });
+    await wait(80);
+    expect(events(b, 'meet:kicked')).toHaveLength(1);
+    expect(events(a, 'meet:peer-left')).toEqual([{ id: b.id }]);
+    expect(_rooms.get(ROOM).peers.has(b.id)).toBe(false);
+    expect(await join(b, ROOM)).toMatchObject({ ok: true });          // kicked people can knock again; that is a product decision, not a bug
+  });
+
+  it('host cannot kick themselves; end-for-all closes the room', async () => {
+    const a = await client('alice'); const b = await client('bob');
+    await join(a, ROOM, true); await join(b, ROOM);
+    a.emit('meet:kick', { target: a.id }); await wait(40);
+    expect(_rooms.get(ROOM).peers.has(a.id)).toBe(true);
+    a.emit('meet:end'); await wait(80);
+    expect(events(b, 'meet:ended')).toHaveLength(1);
+    expect(_rooms.has(ROOM)).toBe(false);
+  });
+
+  it('host leaving passes the host role to the next person', async () => {
+    const a = await client('alice'); const b = await client('bob'); const c = await client('cy');
+    await join(a, ROOM, true); await join(b, ROOM); await join(c, ROOM);
+    a.emit('meet:leave'); await wait(80);
+    expect(events(b, 'meet:host-changed')).toEqual([{ hostId: b.id }]);
+    expect(events(c, 'meet:host-changed')).toEqual([{ hostId: b.id }]);
+    expect(_rooms.get(ROOM).hostSid).toBe(b.id);
+  });
+
+  it('disconnect cleans up the room and notifies the others', async () => {
+    const a = await client('alice'); const b = await client('bob');
+    await join(a, ROOM, true); await join(b, ROOM);
+    const bid = b.id; b.disconnect(); await wait(80);
+    expect(events(a, 'meet:peer-left')).toEqual([{ id: bid }]);
+    a.disconnect(); await wait(80);
+    expect(_rooms.has(ROOM)).toBe(false);
+  });
+
+  it('rate-limits room creation per user (5 per window) but not joining existing rooms', async () => {
+    const a = await client('spam');
+    const ids = ['aaa-aaaa-aaa', 'bbb-bbbb-bbb', 'ccc-cccc-ccc', 'ddd-dddd-ddd', 'eee-eeee-eee'];
+    for (const id of ids) expect((await join(a, id, true)).ok).toBe(true);
+    expect(await join(a, 'fff-ffff-fff', true)).toEqual({ ok: false, error: 'rate-limited' });
+    expect(_rooms.has('fff-ffff-fff')).toBe(false);
+    const b = await client('bob');
+    expect((await join(b, 'eee-eeee-eee')).ok).toBe(true);   // spam is still in the last room (a socket holds one room at a time)
+  });
+
+  it('survives garbage on every event', async () => {
+    const a = await client('alice');
+    for (const ev of ['meet:join', 'meet:signal', 'meet:kick', 'meet:mute', 'meet:end', 'meet:host', 'meet:leave']) {
+      for (const p of [null, undefined, 0, 'x', [], { target: {} }]) a.emit(ev, p);
+    }
+    await wait(100);
+    expect(a.connected).toBe(true);
+    expect((await join(a, ROOM, true)).ok).toBe(true);
+  });
+});
+
+========================================================================
 FILE: frontend-react/.env.example
 ========================================================================
 # Backend API (include /api/v1)
@@ -7395,6 +7877,8 @@ import Progress from '@/pages/dashboard/Progress';
 import Community from '@/pages/dashboard/Community';
 import Sessions from '@/pages/dashboard/Sessions';
 import Leaderboard from '@/pages/dashboard/Leaderboard';
+import Meet from '@/pages/dashboard/Meet';
+import MeetRoom from '@/pages/dashboard/MeetRoom';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -7416,6 +7900,8 @@ export default function App() {
           <Route path="community" element={<Community />} />
           <Route path="sessions" element={<Sessions />} />
           <Route path="leaderboard" element={<Leaderboard />} />
+          <Route path="meet" element={<Meet />} />
+          <Route path="meet/:roomId" element={<MeetRoom />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -7746,6 +8232,15 @@ const PATHS = {
     bot: (<><rect x="4" y="8" width="16" height="11" rx="4"/><path d="M12 8V5.5"/><circle cx="12" cy="4" r="1"/><path d="M9 13v1.5"/><path d="M15 13v1.5"/></>),
     plus: (<><path d="M12 5v14"/><path d="M5 12h14"/></>),
     'arrow-right': (<><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></>),
+    // ── added for Meet ──
+    video: (<><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3"/></>),
+    'video-off': (<><path d="M10 6H5.5A2.5 2.5 0 0 0 3 8.5v7A2.5 2.5 0 0 0 5.5 18h8a2.5 2.5 0 0 0 2.5-2.5V14"/><path d="M16 10.5l5-3v9l-3.2-1.9"/><path d="M3 3l18 18"/></>),
+    'mic-off': (<><path d="M15 9.3V6a3 3 0 0 0-5.9-.8"/><path d="M9 9v3a3 3 0 0 0 4.7 2.5"/><path d="M19 11a7 7 0 0 1-.9 3.4"/><path d="M5 11a7 7 0 0 0 10.4 6.1"/><path d="M12 18v3"/><path d="M3 3l18 18"/></>),
+    monitor: (<><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></>),
+    hand: (<><path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10.5V4a1.5 1.5 0 0 1 3 0v6.5"/><path d="M14 10V5.5a1.5 1.5 0 0 1 3 0V13"/><path d="M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a5 5 0 0 1-4-2L4.6 13.4a1.5 1.5 0 0 1 2.3-1.9L8 12.7"/></>),
+    captions: (<><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10.5 10.3a2 2 0 1 0 0 3.4"/><path d="M17 10.3a2 2 0 1 0 0 3.4"/></>),
+    'phone-off': <path d="M3.5 14.6c4.7-3.6 12.3-3.6 17 0 .6.5.7 1.4.1 2l-1.3 1.5a1.4 1.4 0 0 1-1.7.3l-2.3-1.2a1.4 1.4 0 0 1-.8-1.3V14.5c-1.7-.5-3.5-.5-5.2 0v1.4c0 .5-.3 1-.8 1.3l-2.3 1.2a1.4 1.4 0 0 1-1.7-.3l-1.3-1.5a1.4 1.4 0 0 1 .1-2Z"/>,
+    copy: (<><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.5"/><path d="M15.5 8.5V6.5A2.5 2.5 0 0 0 13 4H6.5A2.5 2.5 0 0 0 4 6.5V13a2.5 2.5 0 0 0 2.5 2.5h2"/></>),
 };
 export default function Icon({ name, size = 20, strokeWidth = 1.5, ...rest }) {
     return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" {...rest}>
@@ -7771,6 +8266,60 @@ export default function Logo({ href = '/' }) {
         Lingua<b>Wave</b>
       </span>
     </Link>);
+}
+
+========================================================================
+FILE: frontend-react/src/components/VideoTile.jsx
+========================================================================
+import { useEffect, useRef } from 'react';
+import Icon from './Icon';
+import { Avatar } from './ui';
+
+/**
+ * One participant's tile: video, name bar, state badges and caption lines.
+ * The <video> element is ALWAYS mounted (just hidden when the camera is off) because remote audio
+ * plays through it. Local tiles are muted (no echo) and mirrored by CSS only; the stream itself is
+ * never flipped, so other people see you the right way round.
+ */
+export default function VideoTile({
+  name, stream, local = false, mirror = false, micOn = true, camOn = true, sharing = false,
+  host = false, signing = false, connection = 'connected', speech = '', sign = '', videoRef, children,
+}) {
+  const ref = useRef(null);
+  const setRef = (el) => { ref.current = el; if (videoRef) videoRef.current = el; };   // optional outer ref (sign engine reads the raw <video>)
+  useEffect(() => {
+    const v = ref.current;
+    if (v && v.srcObject !== (stream || null)) v.srcObject = stream || null;
+  }, [stream]);
+
+  const showVideo = !!stream && (camOn || sharing);
+  const connecting = !local && (connection === 'new' || connection === 'connecting');
+  const lost = !local && (connection === 'failed' || connection === 'disconnected');
+
+  return (<figure className={`meet-tile ${local ? 'is-local' : ''} ${signing ? 'is-signing' : ''}`}>
+    <video ref={setRef} autoPlay playsInline muted={local}
+      className={`${mirror && !sharing ? 'mirror' : ''} ${sharing ? 'contain' : ''} ${showVideo ? '' : 'vid-off'}`}
+      aria-label={`${local ? 'Your' : `${name}’s`} video`}/>
+    {!showVideo && (<div className="meet-tile-off"><Avatar name={name} size={72}/></div>)}
+    {children}
+    {connecting && <div className="meet-tile-status" role="status">Connecting…</div>}
+    {lost && <div className="meet-tile-status bad" role="status">Connection lost</div>}
+
+    <div className="meet-caps" aria-hidden="true">
+      {sign && (<p className="cap cap-sign">
+        <Icon name="hand" size={14}/><span className="sr-only">{name} signs: </span>{sign}
+      </p>)}
+      {speech && (<p className="cap cap-speech"><b>{name}</b> {speech}</p>)}
+    </div>
+
+    <figcaption className="meet-tile-bar">
+      <span className="meet-tile-name">{local ? `${name} (You)` : name}</span>
+      {host && <span className="meet-badge">Host</span>}
+      {sharing && <span className="meet-badge"><Icon name="monitor" size={12}/> Presenting</span>}
+      {signing && <span className="meet-badge sign"><Icon name="hand" size={12}/> Signing</span>}
+      {!micOn && <span className="meet-muted" title="Microphone off"><Icon name="mic-off" size={14}/><span className="sr-only">Microphone off</span></span>}
+    </figcaption>
+  </figure>);
 }
 
 ========================================================================
@@ -8116,6 +8665,9 @@ export const api = {
     conversation: {
         chat: (d) => request('POST', '/conversation/chat', d),
     },
+    meet: {
+        ice: () => request('GET', '/meet/ice'),
+    },
 };
 
 ========================================================================
@@ -8210,6 +8762,1348 @@ export async function getGoogleIdToken() {
 }
 
 ========================================================================
+FILE: frontend-react/src/lib/meet/captioner.js
+========================================================================
+// Turns a noisy stream of per-frame predictions into discrete words.
+// Fixes the old SignFlow logic: repeats of the same word are allowed once the hand leaves / pauses,
+// low-confidence frames are ignored, and words are emitted individually (the UI joins them with spaces).
+export function makeCaptioner({ window = 8, minVotes = 6, minConf = 0.8, repeatMs = 1500, gapMs = 500 } = {}) {
+  let buf = [], lastWord = '', lastAt = 0, lastSeen = 0;
+  return function feed(label, conf, now = Date.now()) {
+    if (!label || conf < minConf) {
+      if (now - lastSeen > gapMs) { lastWord = ''; buf = []; }       // hand gone / unsure for a while: allow same word again
+      return null;
+    }
+    lastSeen = now;
+    buf.push(label); if (buf.length > window) buf.shift();
+    const counts = {}; for (const l of buf) counts[l] = (counts[l] || 0) + 1;
+    const [top, n] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    if (n >= minVotes && (top !== lastWord || now - lastAt > repeatMs)) {
+      lastWord = top; lastAt = now; buf = [];
+      return { text: top, conf };
+    }
+    return null;
+  };
+}
+
+========================================================================
+FILE: frontend-react/src/lib/meet/captioner.test.js
+========================================================================
+// @vitest-environment node
+import { describe, it, expect } from 'vitest';
+import { makeCaptioner } from './captioner';
+import { makeSlowGuard } from './slowGuard';
+import { coverMap } from './drawHand';
+
+/** Feed `n` identical frames, 80 ms apart (~12 fps), starting at t. Returns [words, nextT]. */
+function run(feed, label, conf, n, t) {
+  const words = [];
+  for (let i = 0; i < n; i++) { const w = feed(label, conf, t); if (w) words.push(w.text); t += 80; }
+  return [words, t];
+}
+
+describe('captioner', () => {
+  it('emits a word once after enough agreeing frames', () => {
+    const feed = makeCaptioner();
+    const [w] = run(feed, 'HELLO', 0.95, 12, 1000);
+    expect(w).toEqual(['HELLO']);
+  });
+
+  it('does not spam while the hand rests on the same sign', () => {
+    const feed = makeCaptioner();
+    const [w] = run(feed, 'HELLO', 0.95, 15, 1000);        // 1.2 s < repeatMs
+    expect(w).toEqual(['HELLO']);
+  });
+
+  it('allows the same word again after a pause (hand leaves / unsure frames)', () => {
+    const feed = makeCaptioner();
+    let [w, t] = run(feed, 'HELLO', 0.95, 10, 1000);
+    const [gap, t2] = run(feed, null, 0, 10, t);            // 800 ms with no hand > gapMs
+    const [w2] = run(feed, 'HELLO', 0.95, 10, t2);
+    expect(w).toEqual(['HELLO']); expect(gap).toEqual([]); expect(w2).toEqual(['HELLO']);
+  });
+
+  it('re-emits a held sign only after repeatMs', () => {
+    const feed = makeCaptioner();
+    const [w] = run(feed, 'STOP', 0.95, 40, 1000);          // 3.2 s of holding
+    expect(w.length).toBeGreaterThanOrEqual(2);
+    expect(w.length).toBeLessThanOrEqual(3);
+  });
+
+  it('ignores low-confidence frames', () => {
+    const feed = makeCaptioner();
+    const [w] = run(feed, 'HELP', 0.5, 40, 1000);
+    expect(w).toEqual([]);
+  });
+
+  it('does not emit on a single-frame flicker between two signs', () => {
+    const feed = makeCaptioner();
+    const words = []; let t = 1000;
+    const seq = ['YES', 'YES', 'NO', 'YES', 'YES', 'NO', 'YES', 'YES'];
+    for (const l of seq) { const w = feed(l, 0.95, t); if (w) words.push(w.text); t += 80; }
+    expect(words.every((x) => x === 'YES')).toBe(true);
+  });
+
+  it('emits two different words in order', () => {
+    const feed = makeCaptioner();
+    let [a, t] = run(feed, 'HELLO', 0.95, 10, 1000);
+    const [b] = run(feed, 'PLEASE', 0.95, 12, t);
+    expect([...a, ...b]).toEqual(['HELLO', 'PLEASE']);
+  });
+});
+
+describe('slowGuard', () => {
+  it('stays quiet for fast frames', () => {
+    const g = makeSlowGuard();
+    expect(Array.from({ length: 100 }, () => g(30)).some(Boolean)).toBe(false);
+  });
+  it('ignores slow warm-up frames', () => {
+    const g = makeSlowGuard();
+    const r = [...Array.from({ length: 10 }, () => g(2000)), ...Array.from({ length: 60 }, () => g(30))];
+    expect(r.some(Boolean)).toBe(false);
+  });
+  it('trips once when frames are consistently slow', () => {
+    const g = makeSlowGuard();
+    const r = Array.from({ length: 80 }, () => g(300));
+    expect(r.filter(Boolean)).toHaveLength(1);
+    expect(r.indexOf(true)).toBe(10 + 30 - 1);              // warmup + one full window
+  });
+  it('a few spikes do not trip it', () => {
+    const g = makeSlowGuard();
+    const r = Array.from({ length: 100 }, (_, i) => g(i % 10 === 0 ? 400 : 40));
+    expect(r.some(Boolean)).toBe(false);
+  });
+});
+
+describe('coverMap (skeleton alignment with object-fit: cover)', () => {
+  it('matches the crop the browser applies', () => {
+    // 640x480 video in a 400x400 box: scale by height, crop the sides equally.
+    const { k, ox, oy } = coverMap(640, 480, 400, 400);
+    expect(k).toBeCloseTo(400 / 480); expect(oy).toBeCloseTo(0); expect(ox).toBeCloseTo((400 - 640 * k) / 2);
+  });
+  it('contain letterboxes instead', () => {
+    const { k, ox } = coverMap(640, 480, 400, 400, 'contain');
+    expect(k).toBeCloseTo(400 / 640); expect(ox).toBeCloseTo(0);
+  });
+});
+
+========================================================================
+FILE: frontend-react/src/lib/meet/classifier.js
+========================================================================
+// Tiny MLP forward pass (63 -> 64 -> 32 -> N) for the exported sign model. No ML runtime needed.
+// Weights come from /sign_model.json, produced by ml/export_model.py.
+
+/** Same preprocessing as training: wrist at origin, divide by max |coordinate|. `lm` = 21 x {x,y,z}. */
+export function normalize(lm) {
+  const out = new Float32Array(63);
+  const bx = lm[0].x, by = lm[0].y, bz = lm[0].z;
+  let mx = 0;
+  for (let i = 0; i < 21; i++) {
+    const x = lm[i].x - bx, y = lm[i].y - by, z = lm[i].z - bz;
+    out[i * 3] = x; out[i * 3 + 1] = y; out[i * 3 + 2] = z;
+    mx = Math.max(mx, Math.abs(x), Math.abs(y), Math.abs(z));
+  }
+  if (mx > 0) for (let i = 0; i < 63; i++) out[i] /= mx;
+  return out;
+}
+
+export async function loadClassifier(url = '/sign_model.json') {
+  const m = await (await fetch(url)).json();
+  return makeClassifier(m);
+}
+
+export function makeClassifier(m) {
+  const { layers, labels } = m;
+  const predict = function predict(x) {
+    let a = x;
+    layers.forEach((L, li) => {
+      const next = new Float32Array(L.b.length);
+      for (let o = 0; o < next.length; o++) {
+        let s = L.b[o]; const w = L.w[o];
+        for (let i = 0; i < a.length; i++) s += w[i] * a[i];
+        next[o] = li < layers.length - 1 ? Math.max(0, s) : s;      // relu on hidden layers
+      }
+      a = next;
+    });
+    let max = -Infinity; for (const v of a) if (v > max) max = v;
+    let sum = 0; const p = a.map((v) => { const e = Math.exp(v - max); sum += e; return e; });
+    let best = 0; for (let i = 0; i < p.length; i++) { p[i] /= sum; if (p[i] > p[best]) best = i; }
+    return { label: labels[best], conf: p[best], probs: p };
+  };
+  predict.labels = labels;
+  return predict;
+}
+
+========================================================================
+FILE: frontend-react/src/lib/meet/classifier.parity.test.js
+========================================================================
+// @vitest-environment node
+// Parity: the browser classifier must reproduce the Python (sklearn) reference outputs.
+// Fixtures are written by ml/export_model.py next to the model:  raw landmarks -> normalised -> probabilities.
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { normalize, makeClassifier } from './classifier';
+
+const read = (rel) => JSON.parse(readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8'));
+const model = read('../../../public/sign_model.json');
+const fx = read('../../../../ml/sign_model.fixtures.json');
+const predict = makeClassifier(model);
+const toLandmarks = (flat) => Array.from({ length: 21 }, (_, i) => ({ x: flat[i * 3], y: flat[i * 3 + 1], z: flat[i * 3 + 2] }));
+
+describe('sign classifier parity with ml/export_model.py', () => {
+  it('fixtures and model agree on shape', () => {
+    expect(fx.raw).toHaveLength(fx.proba.length);
+    expect(fx.raw[0]).toHaveLength(63);
+    expect(fx.proba[0]).toHaveLength(model.labels.length);
+  });
+
+  it.each(fx.raw.map((_, i) => i))('sample %i: normalize matches python (±0.001)', (i) => {
+    const n = normalize(toLandmarks(fx.raw[i]));
+    n.forEach((v, j) => expect(Math.abs(v - fx.norm[i][j])).toBeLessThan(0.001));
+  });
+
+  it.each(fx.raw.map((_, i) => i))('sample %i: probabilities match python (±0.001) and same label', (i) => {
+    const r = predict(normalize(toLandmarks(fx.raw[i])));
+    r.probs.forEach((p, j) => expect(Math.abs(p - fx.proba[i][j])).toBeLessThan(0.001));
+    expect(r.label).toBe(fx.pred[i]);
+  });
+
+  it('exposes labels and handles a degenerate (all-equal) hand without NaN', () => {
+    expect(predict.labels).toEqual(model.labels);
+    const flat = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5, z: 0 }));
+    const r = predict(normalize(flat));
+    expect(Number.isFinite(r.conf)).toBe(true);
+  });
+});
+
+========================================================================
+FILE: frontend-react/src/lib/meet/drawHand.js
+========================================================================
+export const HAND_CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
+
+/**
+ * Draw one hand skeleton on `canvas`, which sits exactly over a <video> that uses object-fit: cover
+ * (or contain). Landmarks are normalised to the VIDEO frame, so we map through the same crop the browser
+ * applies. Mirroring is done by CSS (.mirror) on the canvas, same as on the video, so nothing is flipped here.
+ * Pass landmarks = null to just clear.
+ */
+export function coverMap(vw, vh, cw, ch, fit = 'cover') {
+  const k = fit === 'contain' ? Math.min(cw / vw, ch / vh) : Math.max(cw / vw, ch / vh);
+  return { k, ox: (cw - vw * k) / 2, oy: (ch - vh * k) / 2 };
+}
+
+export function drawHand(canvas, video, landmarks, color = '#f5a524') {
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) {
+    canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+  }
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, cw, ch);
+  if (!landmarks || !video?.videoWidth) return;
+  const { k, ox, oy } = coverMap(video.videoWidth, video.videoHeight, cw, ch);
+  const pt = (l) => [ox + l.x * video.videoWidth * k, oy + l.y * video.videoHeight * k];
+  g.lineWidth = 3; g.lineCap = 'round'; g.strokeStyle = color; g.fillStyle = '#fff';
+  g.beginPath();
+  for (const [a, b] of HAND_CONNECTIONS) { const [x1, y1] = pt(landmarks[a]); const [x2, y2] = pt(landmarks[b]); g.moveTo(x1, y1); g.lineTo(x2, y2); }
+  g.stroke();
+  for (const l of landmarks) { const [x, y] = pt(l); g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill(); }
+}
+
+========================================================================
+FILE: frontend-react/src/lib/meet/roomId.js
+========================================================================
+// Meeting room IDs look like "abc-defg-hij" (3-4-3 lowercase letters).
+// ~26^10 ≈ 1.4e14 combinations, generated from crypto.getRandomValues (not Math.random).
+export const ROOM_ID_RE = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
+
+const A = 'abcdefghijklmnopqrstuvwxyz';
+
+export function generateRoomId() {
+  const letters = [];
+  const buf = new Uint8Array(32);
+  // Rejection sampling: 234 = 26 * 9, so values >= 234 are dropped to avoid modulo bias.
+  while (letters.length < 10) {
+    crypto.getRandomValues(buf);
+    for (const b of buf) {
+      if (b < 234 && letters.length < 10) letters.push(A[b % 26]);
+    }
+  }
+  const s = letters.join('');
+  return `${s.slice(0, 3)}-${s.slice(3, 7)}-${s.slice(7)}`;
+}
+
+/** Accepts a bare code or a pasted link; returns a valid room ID or null. */
+export function parseRoomInput(input) {
+  if (typeof input !== 'string') return null;
+  let s = input.trim().toLowerCase();
+  if (!s) return null;
+  try {
+    if (/^https?:\/\//.test(s)) s = new URL(s).pathname;
+  } catch { return null; }
+  s = s.split(/[/?#]/).filter(Boolean).pop() || '';
+  return ROOM_ID_RE.test(s) ? s : null;
+}
+
+export const roomLink = (id) => `${window.location.origin}/dashboard/meet/${id}`;
+
+========================================================================
+FILE: frontend-react/src/lib/meet/signEngine.js
+========================================================================
+// Runs MediaPipe HandLandmarker + the JSON classifier ON THE USER'S DEVICE. No frame ever leaves the browser.
+import { loadClassifier, normalize } from './classifier';
+
+export const WASM_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'; // keep in sync with package.json
+export { HAND_CONNECTIONS } from './drawHand';     // lives in drawHand.js so the UI never statically imports this file
+
+export async function createSignEngine({ video, onResult, fps = 12 }) {
+  const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision');
+  const fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
+  const make = (delegate) => HandLandmarker.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: '/hand_landmarker.task', delegate },
+    runningMode: 'VIDEO', numHands: 1,
+  });
+  let landmarker;
+  try { landmarker = await make('GPU'); } catch { landmarker = await make('CPU'); }
+  const predict = await loadClassifier();
+
+  let timer = null, running = false, lastTs = -1;
+  const step = () => {
+    if (!running) return;
+    try {
+      if (video.readyState >= 2 && video.videoWidth) {
+        const t0 = performance.now();
+        const ts = Math.max(t0, lastTs + 1); lastTs = ts;                    // timestamps must increase
+        const res = landmarker.detectForVideo(video, ts);
+        const lm = res.landmarks?.[0];
+        const r = lm ? predict(normalize(lm)) : { label: null, conf: 0 };
+        onResult({ ...r, landmarks: lm || null, ms: performance.now() - t0 }); // ms = detect + classify cost of THIS frame
+      }
+    } catch (e) { console.warn('[sign] frame failed', e); }
+    timer = setTimeout(step, 1000 / fps);
+  };
+  return {
+    start() { if (!running) { running = true; step(); } },
+    stop() { running = false; clearTimeout(timer); },
+    close() { running = false; clearTimeout(timer); landmarker.close(); },
+  };
+}
+
+========================================================================
+FILE: frontend-react/src/lib/meet/signEngine.version.test.js
+========================================================================
+// @vitest-environment node
+// WASM_BASE in signEngine.js must load the same @mediapipe/tasks-vision version that package.json pins,
+// otherwise the JS bundle and the WASM runtime disagree and HandLandmarker fails at runtime.
+import { it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { WASM_BASE } from './signEngine';
+
+it('WASM_BASE version equals the exact pin in package.json', () => {
+  const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('../../../package.json', import.meta.url)), 'utf8'));
+  const pinned = pkg.dependencies['@mediapipe/tasks-vision'];
+  expect(pinned).toMatch(/^\d+\.\d+\.\d+$/);                     // exact, no ^ or ~
+  expect(WASM_BASE).toContain(`tasks-vision@${pinned}/`);
+});
+
+========================================================================
+FILE: frontend-react/src/lib/meet/slowGuard.js
+========================================================================
+// Decides when sign recognition is too slow for this device and should switch itself off.
+// Fed the per-frame cost (ms) reported by signEngine. The first `warmup` frames are ignored (GPU shader
+// compile / first inference are always slow); after that, if the average of the last `size` frames is
+// above `maxMs`, feed() returns true (once) so the caller can disable sign mode.
+export function makeSlowGuard({ size = 30, maxMs = 150, warmup = 10 } = {}) {
+  let seen = 0, tripped = false;
+  const win = [];
+  return function feed(ms) {
+    if (tripped || !Number.isFinite(ms)) return false;
+    if (++seen <= warmup) return false;
+    win.push(ms); if (win.length > size) win.shift();
+    if (win.length < size) return false;
+    const avg = win.reduce((a, b) => a + b, 0) / win.length;
+    if (avg > maxMs) { tripped = true; return true; }
+    return false;
+  };
+}
+
+========================================================================
+FILE: frontend-react/src/lib/meet/useLocalMedia.js
+========================================================================
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+// Owns the local camera/mic stream, device lists, and screen share.
+// Every hardware device (camera light!) is released in stop() and on unmount.
+
+const stopStream = (s) => s?.getTracks().forEach((t) => t.stop());
+
+const classify = (err) => {
+  const n = err?.name;
+  if (n === 'NotAllowedError' || n === 'SecurityError') return 'denied';
+  if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'notfound';
+  if (n === 'NotReadableError' || n === 'AbortError') return 'inuse';
+  return 'other';
+};
+
+export const MEDIA_ERRORS = {
+  denied: 'Camera and microphone access is blocked. Click the lock icon in the address bar, allow both, then reload.',
+  notfound: 'No camera or microphone was found. You can still join to watch, listen and chat.',
+  inuse: 'Your camera or microphone is being used by another app or tab. Close it and try again.',
+  other: 'Could not start your camera or microphone.',
+  unsupported: 'This browser cannot access a camera or microphone. Use a recent version of Chrome.',
+};
+
+export default function useLocalMedia() {
+  const [stream, setStream] = useState(null);
+  const [error, setError] = useState(null);        // key of MEDIA_ERRORS, or null
+  const [mic, setMicState] = useState(true);
+  const [cam, setCamState] = useState(true);
+  const [devices, setDevices] = useState({ audio: [], video: [] });
+  const [ids, setIds] = useState({ audio: '', video: '' });
+  const [screenTrack, setScreenTrack] = useState(null);
+  const streamRef = useRef(null);
+  const screenRef = useRef(null);
+  const micRef = useRef(true);
+  const camRef = useRef(true);
+  const idsRef = useRef(ids);
+  const seq = useRef(0);                            // ignore results of superseded start() calls
+  idsRef.current = ids;
+
+  const refreshDevices = useCallback(async () => {
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      setDevices({
+        audio: list.filter((d) => d.kind === 'audioinput'),
+        video: list.filter((d) => d.kind === 'videoinput'),
+      });
+    } catch { /* ignore */ }
+  }, []);
+
+  /** (Re)acquire camera + mic. Falls back to audio-only / video-only when one is missing. */
+  const start = useCallback(async (pick = {}) => {
+    if (!navigator.mediaDevices?.getUserMedia) { setError('unsupported'); return null; }
+    const my = ++seq.current;
+    stopStream(streamRef.current);
+    streamRef.current = null;
+    const audioId = pick.audio ?? idsRef.current.audio;
+    const videoId = pick.video ?? idsRef.current.video;
+    const audio = {
+      echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+      ...(audioId ? { deviceId: { exact: audioId } } : {}),
+    };
+    const video = {
+      width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 },
+      ...(videoId ? { deviceId: { exact: videoId } } : {}),
+    };
+    let s = null;
+    let err = null;
+    for (const c of [{ audio, video }, { audio, video: false }, { audio: false, video }]) {
+      try { s = await navigator.mediaDevices.getUserMedia(c); err = null; break; }
+      catch (e) {
+        err = e;
+        if (classify(e) === 'denied') break;        // no point trying the other combinations
+      }
+    }
+    if (my !== seq.current) { stopStream(s); return null; }   // superseded, stopped or unmounted
+    if (!s) { setStream(null); setError(classify(err)); refreshDevices(); return null; }
+    s.getAudioTracks().forEach((t) => { t.enabled = micRef.current; });
+    s.getVideoTracks().forEach((t) => { t.enabled = camRef.current; t.contentHint = 'motion'; });
+    streamRef.current = s;
+    setStream(s);
+    setError(s.getAudioTracks().length && s.getVideoTracks().length ? null : 'notfound');
+    setIds({
+      audio: s.getAudioTracks()[0]?.getSettings().deviceId || '',
+      video: s.getVideoTracks()[0]?.getSettings().deviceId || '',
+    });
+    refreshDevices();                                // labels only appear after permission is granted
+    return s;
+  }, [refreshDevices]);
+
+  const stopShare = useCallback(() => {
+    screenRef.current?.stop();
+    screenRef.current = null;
+    setScreenTrack(null);
+  }, []);
+
+  /** Release every device. Safe to call repeatedly. */
+  const stop = useCallback(() => {
+    seq.current++;
+    stopShare();
+    stopStream(streamRef.current);
+    streamRef.current = null;
+    setStream(null);
+  }, [stopShare]);
+
+  const setMic = useCallback((on) => {
+    micRef.current = on; setMicState(on);
+    streamRef.current?.getAudioTracks().forEach((t) => { t.enabled = on; });
+  }, []);
+  const setCam = useCallback((on) => {
+    camRef.current = on; setCamState(on);
+    streamRef.current?.getVideoTracks().forEach((t) => { t.enabled = on; });
+  }, []);
+
+  /** Returns the screen video track, or null if the user cancelled / it is unsupported. */
+  const startShare = useCallback(async () => {
+    if (!navigator.mediaDevices?.getDisplayMedia) return null;
+    try {
+      const ds = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { max: 15 } }, audio: false });
+      const track = ds.getVideoTracks()[0];
+      if (!track) return null;
+      track.contentHint = 'detail';
+      screenRef.current = track;
+      setScreenTrack(track);
+      return track;
+    } catch { return null; }
+  }, []);
+
+  useEffect(() => {
+    const md = navigator.mediaDevices;
+    md?.addEventListener?.('devicechange', refreshDevices);
+    return () => md?.removeEventListener?.('devicechange', refreshDevices);
+  }, [refreshDevices]);
+
+  // Unmount: release camera, mic and screen capture.
+  useEffect(() => () => {
+    seq.current++;
+    screenRef.current?.stop();
+    stopStream(streamRef.current);
+  }, []);
+
+  return { stream, error, mic, cam, setMic, setCam, devices, ids, start, stop, screenTrack, startShare, stopShare };
+}
+
+========================================================================
+FILE: frontend-react/src/lib/meet/useMeetRoom.identity.test.jsx
+========================================================================
+// Regression: the server names people in a room by SOCKET id (join ack `selfId`, `hostId`, peer ids), while the
+// page passes the USER id as `selfId`. isHost must follow the ack's selfId, and host actions must use the
+// event names the server listens for.
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+
+let sock;
+function makeSocket() {
+  const h = {}; const s = {
+    emitted: [], joinCb: null,
+    on: (e, f) => { h[e] = f; return s; }, removeAllListeners: () => {}, disconnect: () => {}, connect: vi.fn(),
+    emit: (e, p) => { s.emitted.push([e, p]); },
+    timeout: () => ({ emit: (e, p, cb) => { s.emitted.push([e, p]); s.joinCb = cb; } }),
+    fire: (e, p) => h[e]?.(p),
+  }; return s;
+}
+vi.mock('socket.io-client', () => ({ io: () => (sock = makeSocket()) }));
+vi.mock('@/lib/api', () => ({ api: { meet: { ice: async () => ({ data: { iceServers: [] } }) } }, getFreshToken: async () => 't' }));
+class FakePC { constructor() { this.tr = []; } addTransceiver(k) { this.tr.push({ sender: { replaceTrack: async () => {} }, receiver: { track: { kind: k } } }); } addTrack() {} getTransceivers() { return this.tr; } createDataChannel() { return { readyState: 'open', send() {}, close() {} }; } async createOffer() { return { type: 'offer', sdp: 'o' }; } async setLocalDescription(d) { this.localDescription = d; } close() {} }
+globalThis.RTCPeerConnection = FakePC;
+globalThis.MediaStream = class { getTracks() { return []; } getAudioTracks() { return []; } getVideoTracks() { return []; } };
+import useMeetRoom from './useMeetRoom';
+
+beforeEach(() => { sock = null; });
+
+async function joined(hostId) {
+  const hook = renderHook(() => useMeetRoom({ roomId: 'abc-defg-hij', selfId: 'user-1', stream: null }));
+  await act(async () => { await hook.result.current.join({}); });
+  act(() => sock.fire('connect'));
+  await act(async () => { sock.joinCb(null, { ok: true, selfId: 'SOCK_ME', hostId, peers: [{ id: 'SOCK_B', name: 'B' }] }); });
+  return hook;
+}
+
+describe('useMeetRoom identity', () => {
+  it('is host when the server says hostId equals OUR socket id (not our user id)', async () => {
+    const { result } = await joined('SOCK_ME');
+    expect(result.current.isHost).toBe(true);
+  });
+  it('is not host when someone else is', async () => {
+    const { result } = await joined('SOCK_B');
+    expect(result.current.isHost).toBe(false);
+    act(() => sock.fire('meet:host-changed', { hostId: 'SOCK_ME' }));
+    expect(result.current.isHost).toBe(true);
+  });
+  it('host actions emit meet:kick / meet:mute / meet:end with {target}', async () => {
+    const { result } = await joined('SOCK_ME');
+    act(() => { result.current.kick('SOCK_B'); result.current.mute('SOCK_B'); });
+    expect(sock.emitted).toContainEqual(['meet:kick', { target: 'SOCK_B' }]);
+    expect(sock.emitted).toContainEqual(['meet:mute', { target: 'SOCK_B' }]);
+  });
+});
+
+========================================================================
+FILE: frontend-react/src/lib/meet/useMeetRoom.js
+========================================================================
+/* eslint-disable react-hooks/exhaustive-deps -- mutable plumbing lives in refs on purpose; callbacks are stable */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
+import { api, getFreshToken } from '@/lib/api';
+import { SOCKET_URL } from '@/lib/config';
+
+/* ════════════════════════════════════════════════════════════════════════════
+   useMeetRoom — one hook that owns everything network-related for a meeting:
+   the Socket.IO signaling connection, one RTCPeerConnection per other person
+   (mesh, max 3 people => 2 connections per browser), the "meet" data channel,
+   remote streams, per-peer state, chat and captions.
+
+   ┌─ WIRE CONTRACT WITH backend/src/sockets/meetSocket.js ─────────────────────┐
+   │ Everything the hook assumes about the server is in EV + PROTO + ackError / │
+   │ asPeer below. If meetSocket.js names something differently, change it      │
+   │ HERE and nowhere else.                                                     │
+   │                                                                            │
+   │ client -> server                                                           │
+   │   meet:join   {roomId, create}  ack => {ok, hostId, peers:[{id,name}]}     │
+   │                                     or {error:'room-full'|'not-found'|     │
+   │                                              'invalid-room'}               │
+   │   meet:signal {to, data}        relay to ONE peer in the same room         │
+   │   meet:leave | meet:end | meet:kick {target} | meet:mute {target}          │
+   │ server -> client                                                           │
+   │   meet:peer-joined {id,name}  meet:peer-left {id}  meet:signal {from,data} │
+   │   meet:host-changed {hostId}  meet:force-mute  meet:kicked  meet:ended     │
+   └────────────────────────────────────────────────────────────────────────────┘
+
+   WebRTC rules used here
+   • The NEWCOMER always sends the offers (to everyone already in the room), so
+     two people can never offer to each other at the same time (no glare).
+   • Existing members only ever answer. They create their peer on "peer-joined"
+     (or lazily on the first offer) and wait.
+   • ICE candidates that arrive before setRemoteDescription are queued.
+   • Screen share = RTCRtpSender.replaceTrack on the video sender (no renegotiation).
+     To guarantee a video sender exists even with no camera, we always add an
+     audio and a video transceiver.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+export const EV = {
+  join: 'meet:join', leave: 'meet:leave', signal: 'meet:signal',
+  kick: 'meet:kick', mute: 'meet:mute', end: 'meet:end',
+  peerJoined: 'meet:peer-joined', peerLeft: 'meet:peer-left',
+  kicked: 'meet:kicked', ended: 'meet:ended',
+  hostChanged: 'meet:host-changed', forceMute: 'meet:force-mute',
+};
+export const PROTO = {
+  join: (roomId, create) => ({ roomId, create: !!create }),
+  signal: (to, data) => ({ to, data }),
+  target: (id) => ({ target: id }),
+};
+const ackError = (res) => {
+  if (!res) return 'unknown';
+  if (res.ok === false || res.error) return String(res.error || res.code || 'unknown').toLowerCase().replace(/_/g, '-');
+  return null;
+};
+const asPeer = (p) => {
+  const x = p?.peer || p || {};
+  return { id: x.id ?? x.userId, name: String(x.name ?? x.username ?? 'Guest').slice(0, 40) };
+};
+
+export const ERROR_TEXT = {
+  'room-full': 'This meeting is full (3 people maximum).',
+  'not-found': 'That meeting does not exist or has already ended. Ask the host for a fresh link.',
+  'invalid-room': 'That meeting code is not valid.',
+  kicked: 'The host removed you from this meeting.',
+  ended: 'The host ended this meeting for everyone.',
+  'rate-limited': 'You are creating or joining meetings too quickly. Wait a minute and try again.',
+  'server-busy': 'The server has too many meetings open right now. Please try again shortly.',
+  timeout: 'The server did not answer. Please try again in a moment.',
+  unknown: 'Could not join the meeting.',
+};
+
+const FALLBACK_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+const CAPTION_TTL = { speech: 6000, sign: 4000 };   // ms of silence before a caption line disappears
+const MAX_CHAT = 200;
+const MAX_ICE_RESTARTS = 2;
+
+async function fetchIceServers() {
+  try {
+    const r = await api.meet.ice();
+    const list = r?.data?.iceServers || r?.iceServers;
+    if (Array.isArray(list) && list.length) return list;
+  } catch { /* fall through to STUN-only */ }
+  return FALLBACK_ICE;
+}
+
+export default function useMeetRoom({ roomId, create = false, selfId, stream, onForceMute, onNotice }) {
+  const [status, setStatus] = useState('idle');   // idle | connecting | joined | reconnecting | error | ended | left
+  const [error, setError] = useState(null);       // {code, message}
+  const [connectIssue, setConnectIssue] = useState(false);
+  const [hostId, setHostId] = useState(null);
+  // The server identifies people in a room by SOCKET id (peer ids, hostId), not by user id. Its join ack
+  // tells us ours; until then (and in tests without one) fall back to the user id.
+  const [meId, setMeId] = useState(selfId);
+  const meIdRef = useRef(selfId);
+  const [peers, setPeers] = useState([]);
+  const [chat, setChat] = useState([]);
+  const [captions, setCaptions] = useState({});   // { [userId]: { speech?: {text, final}, sign?: {text} } }
+
+  // Everything below is mutable plumbing that must not trigger renders.
+  const opts = useRef({});
+  opts.current = { roomId, create, selfId, stream, onForceMute, onNotice };
+  const socketRef = useRef(null);
+  const iceRef = useRef(FALLBACK_ICE);
+  const peersRef = useRef(new Map());             // id -> peer record (see createPeer)
+  const orphansRef = useRef(new Map());           // id -> ICE candidates that arrived before their peer existed
+  const videoOutRef = useRef(null);               // track to send on the video sender (camera or screen)
+  const stateRef = useRef({ mic: true, cam: true, signing: false, sharing: false });
+  const capTimers = useRef(new Map());
+  const joinedOnce = useRef(false);
+  const starting = useRef(false);
+  const chatSeq = useRef(0);
+
+  /* ── small helpers ────────────────────────────────────────────────────── */
+  const syncPeers = useCallback(() => {
+    setPeers([...peersRef.current.values()].map((p) => ({
+      id: p.id, name: p.name, stream: p.stream, mic: p.mic, cam: p.cam,
+      signing: p.signing, sharing: p.sharing, connection: p.connection,
+    })));
+  }, []);
+
+  const broadcast = useCallback((obj) => {
+    const msg = JSON.stringify(obj);
+    for (const p of peersRef.current.values()) {
+      if (p.dc?.readyState === 'open') { try { p.dc.send(msg); } catch { /* channel closing */ } }
+    }
+  }, []);
+
+  const sendSignal = (to, data) => socketRef.current?.emit(EV.signal, PROTO.signal(to, data));
+
+  /* ── captions (shared by local + remote) ──────────────────────────────── */
+  const clearCaption = useCallback((id, source) => {
+    setCaptions((prev) => {
+      if (!prev[id]?.[source]) return prev;
+      const { [source]: _drop, ...rest } = prev[id];
+      const next = { ...prev };
+      if (Object.keys(rest).length) next[id] = rest; else delete next[id];
+      return next;
+    });
+  }, []);
+
+  const putCaption = useCallback((id, source, text, final) => {
+    if (source !== 'speech' && source !== 'sign') return;
+    const clean = String(text ?? '').slice(0, 300);
+    if (!clean.trim()) return;
+    setCaptions((prev) => {
+      const cur = prev[id] || {};
+      let line = clean;
+      // Sign words arrive one at a time: build a running line (last 10 words) that expires after 4 s idle.
+      if (source === 'sign' && cur.sign) line = `${cur.sign.text} ${clean}`.split(' ').slice(-10).join(' ');
+      return { ...prev, [id]: { ...cur, [source]: { text: line, final: !!final } } };
+    });
+    const key = `${id}:${source}`;
+    clearTimeout(capTimers.current.get(key));
+    capTimers.current.set(key, setTimeout(() => { capTimers.current.delete(key); clearCaption(id, source); }, CAPTION_TTL[source]));
+  }, [clearCaption]);
+
+  const dropCaptionsOf = useCallback((id) => {
+    for (const s of ['speech', 'sign']) {
+      const key = `${id}:${s}`;
+      clearTimeout(capTimers.current.get(key));
+      capTimers.current.delete(key);
+    }
+    setCaptions((prev) => { if (!prev[id]) return prev; const n = { ...prev }; delete n[id]; return n; });
+  }, []);
+
+  const dropCaptionOfSource = useCallback((id, source) => {
+    clearTimeout(capTimers.current.get(`${id}:${source}`));
+    capTimers.current.delete(`${id}:${source}`);
+    clearCaption(id, source);
+  }, [clearCaption]);
+
+  /* ── data channel ─────────────────────────────────────────────────────── */
+  const onChannelMessage = useCallback((peer, raw) => {
+    // Never trust peers: size-cap, parse defensively, whitelist fields. The sender's NAME always
+    // comes from the server-provided peer record, never from the message body.
+    if (typeof raw !== 'string' || raw.length > 4096) return;
+    let m;
+    try { m = JSON.parse(raw); } catch { return; }
+    if (!m || typeof m !== 'object') return;
+    if (m.type === 'caption') {
+      putCaption(peer.id, m.source, m.text, m.source === 'speech' ? m.final : true);
+    } else if (m.type === 'chat') {
+      const text = String(m.text ?? '').trim().slice(0, 500);
+      if (!text) return;
+      setChat((c) => [...c, { id: `c${++chatSeq.current}`, from: peer.id, name: peer.name, text, ts: Date.now(), own: false }].slice(-MAX_CHAT));
+    } else if (m.type === 'state') {
+      peer.mic = m.mic !== false;
+      peer.cam = m.cam !== false;
+      peer.signing = m.signing === true;
+      peer.sharing = m.sharing === true;
+      if (!peer.signing) dropCaptionOfSource(peer.id, 'sign');
+      syncPeers();
+    }
+  }, [putCaption, syncPeers, dropCaptionOfSource]);
+
+  const wireChannel = useCallback((peer, dc) => {
+    peer.dc = dc;
+    dc.onopen = () => { try { dc.send(JSON.stringify({ type: 'state', ...stateRef.current })); } catch { /* ignore */ } };
+    dc.onmessage = (e) => onChannelMessage(peer, e.data);
+  }, [onChannelMessage]);
+
+  /* ── peer connections ─────────────────────────────────────────────────── */
+  const makeOffer = useCallback(async (peer, iceRestart = false) => {
+    try {
+      const offer = await peer.pc.createOffer({ iceRestart });
+      await peer.pc.setLocalDescription(offer);
+      sendSignal(peer.id, { type: 'offer', sdp: peer.pc.localDescription.sdp });
+    } catch (e) { console.warn('[meet] createOffer failed', e); }
+  }, []);
+
+  const closePeer = useCallback((peer) => {
+    try {
+      if (peer.dc) { peer.dc.onopen = peer.dc.onmessage = null; peer.dc.close(); }
+      peer.pc.ontrack = peer.pc.onicecandidate = peer.pc.onconnectionstatechange = peer.pc.ondatachannel = null;
+      peer.pc.close();
+    } catch { /* already closed */ }
+  }, []);
+
+  const createPeer = useCallback((id, name, initiator) => {
+    const existing = peersRef.current.get(id);
+    if (existing) { if (name) existing.name = name; return existing; }
+    const pc = new RTCPeerConnection({ iceServers: iceRef.current });
+    const peer = {
+      id, name: name || 'Guest', pc, dc: null, initiator,
+      stream: new MediaStream(),                    // we add tracks ourselves; ignore event.streams
+      pending: [], remoteSet: false, restarts: 0,
+      mic: true, cam: true, signing: false, sharing: false, connection: 'new',
+    };
+    peersRef.current.set(id, peer);
+
+    pc.onicecandidate = (e) => { if (e.candidate) sendSignal(id, { type: 'candidate', candidate: e.candidate.toJSON() }); };
+    pc.ontrack = (e) => {
+      if (!peer.stream.getTracks().includes(e.track)) peer.stream.addTrack(e.track);
+      syncPeers();
+    };
+    pc.onconnectionstatechange = () => {
+      peer.connection = pc.connectionState;
+      syncPeers();
+      // Only the original offerer may re-offer, which keeps "no glare" true during ICE restarts.
+      if (pc.connectionState === 'failed' && peer.initiator && peer.restarts < MAX_ICE_RESTARTS) {
+        peer.restarts += 1;
+        makeOffer(peer, true);
+      }
+    };
+
+    // Data channel: the offerer creates it BEFORE createOffer; the answerer receives it.
+    if (initiator) wireChannel(peer, pc.createDataChannel('meet'));
+    else pc.ondatachannel = (e) => { if (e.channel.label === 'meet') wireChannel(peer, e.channel); };
+
+    const s = opts.current.stream;
+    const audio = s?.getAudioTracks()[0];
+    const video = videoOutRef.current || s?.getVideoTracks()[0];
+    if (audio) pc.addTrack(audio, s); else pc.addTransceiver('audio', { direction: 'sendrecv' });
+    if (video) pc.addTrack(video, s || peer.stream); else pc.addTransceiver('video', { direction: 'sendrecv' });
+
+    syncPeers();
+    return peer;
+  }, [makeOffer, syncPeers, wireChannel]);
+
+  const flushCandidates = async (peer) => {
+    peer.remoteSet = true;
+    const queued = peer.pending.splice(0);
+    for (const c of queued) { try { await peer.pc.addIceCandidate(c); } catch { /* stale candidate */ } }
+  };
+
+  const onSignal = useCallback(async (payload) => {
+    const from = payload?.from;
+    const data = payload?.data;
+    if (from == null || !data || typeof data !== 'object') return;
+    try {
+      if (data.type === 'offer' && typeof data.sdp === 'string') {
+        const peer = createPeer(from, null, false);
+        await peer.pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
+        const orphans = orphansRef.current.get(from);
+        if (orphans) { peer.pending.push(...orphans); orphansRef.current.delete(from); }
+        await flushCandidates(peer);
+        const answer = await peer.pc.createAnswer();
+        await peer.pc.setLocalDescription(answer);
+        sendSignal(from, { type: 'answer', sdp: peer.pc.localDescription.sdp });
+      } else if (data.type === 'answer' && typeof data.sdp === 'string') {
+        const peer = peersRef.current.get(from);
+        if (!peer || peer.pc.signalingState !== 'have-local-offer') return;
+        await peer.pc.setRemoteDescription({ type: 'answer', sdp: data.sdp });
+        await flushCandidates(peer);
+      } else if (data.type === 'candidate' && data.candidate) {
+        const peer = peersRef.current.get(from);
+        if (!peer) {                                 // candidate raced ahead of everything: park it briefly
+          const list = orphansRef.current.get(from) || [];
+          if (list.length < 50) orphansRef.current.set(from, [...list, data.candidate]);
+          return;
+        }
+        if (peer.remoteSet) { try { await peer.pc.addIceCandidate(data.candidate); } catch { /* ignore */ } }
+        else if (peer.pending.length < 100) peer.pending.push(data.candidate);
+      }
+    } catch (e) { console.warn('[meet] signal handling failed', e); }
+  }, [createPeer]);
+
+  /* ── teardown ─────────────────────────────────────────────────────────── */
+  const teardownPeers = useCallback(() => {
+    for (const p of peersRef.current.values()) closePeer(p);
+    peersRef.current.clear();
+    orphansRef.current.clear();
+    for (const t of capTimers.current.values()) clearTimeout(t);
+    capTimers.current.clear();
+    setPeers([]);
+    setCaptions({});
+  }, [closePeer]);
+
+  /** Closes the socket and every connection. Does NOT stop local tracks (useLocalMedia owns those). */
+  const teardownAll = useCallback((emitLeave) => {
+    const s = socketRef.current;
+    socketRef.current = null;
+    if (s) {
+      if (emitLeave && s.connected) s.emit(EV.leave);
+      s.removeAllListeners();
+      s.disconnect();
+    }
+    teardownPeers();
+    joinedOnce.current = false;
+    starting.current = false;
+    setConnectIssue(false);
+  }, [teardownPeers]);
+
+  const finish = useCallback((code) => {
+    teardownAll(false);
+    setError({ code, message: ERROR_TEXT[code] || ERROR_TEXT.unknown });
+    setStatus(code === 'kicked' || code === 'ended' ? 'ended' : 'error');
+  }, [teardownAll]);
+
+  /* ── join ─────────────────────────────────────────────────────────────── */
+  const join = useCallback(async (initial = {}) => {
+    if (socketRef.current || starting.current) return;
+    starting.current = true;
+    stateRef.current = { ...stateRef.current, ...initial };
+    setStatus('connecting');
+    setError(null);
+    setChat([]);
+
+    iceRef.current = await fetchIceServers();
+    if (!starting.current) return;                  // leave()/unmount happened while we were fetching
+
+    // `auth` as a function is re-run on every (re)connect, so an expired 15-minute access token is
+    // refreshed instead of failing the handshake forever (same pattern as Community.jsx).
+    const socket = io(SOCKET_URL, {
+      auth: (cb) => { getFreshToken().then((token) => cb({ token })); },
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+    });
+    socketRef.current = socket;
+    const live = () => socketRef.current === socket;
+
+    const onJoined = (res) => {
+      teardownPeers();                              // on reconnect: drop any stale connections first
+      meIdRef.current = res.selfId ?? opts.current.selfId; setMeId(meIdRef.current);
+      setHostId(res.hostId ?? res.host ?? null);
+      joinedOnce.current = true;
+      starting.current = false;
+      setStatus('joined');
+      // We are the newcomer: offer to everyone who is already here.
+      for (const raw of Array.isArray(res.peers) ? res.peers : []) {
+        const p = asPeer(raw);
+        if (p.id == null || p.id === meIdRef.current || p.id === opts.current.selfId) continue;
+        makeOffer(createPeer(p.id, p.name, true));
+      }
+    };
+
+    const doJoin = (createFlag) => {
+      socket.timeout(15000).emit(EV.join, PROTO.join(opts.current.roomId, createFlag), (err, res) => {
+        if (!live()) return;
+        if (err) return finish('timeout');
+        const code = ackError(res);
+        if (code) {
+          // After a network blip the room may have been torn down; re-create it rather than fail.
+          if (code === 'not-found' && joinedOnce.current && !createFlag) return doJoin(true);
+          return finish(code);
+        }
+        onJoined(res);
+      });
+    };
+
+    socket.on('connect', () => { setConnectIssue(false); doJoin(!joinedOnce.current && opts.current.create); });
+    socket.on('connect_error', () => { if (live()) setConnectIssue(true); });
+    socket.on('disconnect', (reason) => {
+      if (!live() || reason === 'io client disconnect') return;
+      teardownPeers();                              // peers are rebuilt from scratch after rejoin
+      setStatus('reconnecting');
+      if (reason === 'io server disconnect') socket.connect();   // server dropped us: socket.io will not retry by itself
+    });
+
+    socket.on(EV.signal, onSignal);
+    socket.on(EV.peerJoined, (raw) => {
+      const p = asPeer(raw);
+      if (p.id == null || p.id === meIdRef.current || p.id === opts.current.selfId) return;
+      createPeer(p.id, p.name, false);              // wait for THEIR offer
+      opts.current.onNotice?.({ type: 'joined', name: p.name });
+    });
+    socket.on(EV.peerLeft, (raw) => {
+      const id = raw?.id ?? raw?.userId ?? raw;
+      const peer = peersRef.current.get(id);
+      if (!peer) return;
+      closePeer(peer);
+      peersRef.current.delete(id);
+      dropCaptionsOf(id);
+      syncPeers();
+      opts.current.onNotice?.({ type: 'left', name: peer.name });
+    });
+    socket.on(EV.hostChanged, (raw) => {
+      const id = raw?.hostId ?? raw?.id ?? raw;
+      setHostId(id);
+      if (id === meIdRef.current) opts.current.onNotice?.({ type: 'host' });
+    });
+    socket.on(EV.forceMute, () => opts.current.onForceMute?.());
+    socket.on(EV.kicked, () => finish('kicked'));
+    socket.on(EV.ended, () => finish('ended'));
+  }, [closePeer, createPeer, dropCaptionsOf, finish, makeOffer, onSignal, syncPeers, teardownPeers]);
+
+  /* ── public actions ───────────────────────────────────────────────────── */
+  const leave = useCallback(() => { teardownAll(true); setStatus('left'); }, [teardownAll]);
+
+  const endForAll = useCallback(() => {
+    socketRef.current?.emit(EV.end);
+    teardownAll(false);
+    setStatus('left');
+  }, [teardownAll]);
+
+  const kick = useCallback((id) => socketRef.current?.emit(EV.kick, PROTO.target(id)), []);
+  const mute = useCallback((id) => socketRef.current?.emit(EV.mute, PROTO.target(id)), []);
+
+  const sendChat = useCallback((text) => {
+    const t = String(text ?? '').trim().slice(0, 500);
+    if (!t) return;
+    broadcast({ type: 'chat', text: t });
+    setChat((c) => [...c, { id: `c${++chatSeq.current}`, from: opts.current.selfId, name: 'You', text: t, ts: Date.now(), own: true }].slice(-MAX_CHAT));
+  }, [broadcast]);
+
+  /** source: 'speech' (text, final) | 'sign' (text). Also shows the line on our own tile. */
+  const sendCaption = useCallback((source, text, final = false) => {
+    const t = String(text ?? '').slice(0, 300);
+    if (!t.trim()) return;
+    broadcast(source === 'speech' ? { type: 'caption', source, text: t, final: !!final } : { type: 'caption', source: 'sign', text: t });
+    putCaption(opts.current.selfId, source, t, final);
+  }, [broadcast, putCaption]);
+
+  /** Merge-and-broadcast our own {mic, cam, signing, sharing}. New peers get it when their channel opens. */
+  const sendState = useCallback((patch) => {
+    stateRef.current = { ...stateRef.current, ...patch };
+    broadcast({ type: 'state', ...stateRef.current });
+  }, [broadcast]);
+
+  /** Swap what we send on the video sender (screen track, or back to the camera track). No renegotiation. */
+  const setOutgoingVideo = useCallback((track) => {
+    videoOutRef.current = track || null;
+    for (const p of peersRef.current.values()) {
+      const tr = p.pc.getTransceivers().find((t) => t.receiver.track?.kind === 'video');
+      tr?.sender.replaceTrack(track || null).catch((e) => console.warn('[meet] replaceTrack failed', e));
+    }
+  }, []);
+
+  // Full cleanup on unmount and when the tab is closed/navigated away.
+  useEffect(() => {
+    const onHide = () => teardownAll(true);
+    window.addEventListener('pagehide', onHide);
+    return () => { window.removeEventListener('pagehide', onHide); teardownAll(true); };
+  }, [teardownAll]);
+
+  return {
+    status, error, connectIssue, hostId, isHost: hostId != null && hostId === meId,
+    peers, chat, captions,
+    join, leave, endForAll, kick, mute, sendChat, sendCaption, sendState, setOutgoingVideo,
+  };
+}
+
+========================================================================
+FILE: frontend-react/src/lib/meet/useMeetRoom.test.jsx
+========================================================================
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+
+/* ── fakes ─────────────────────────────────────────────────────────────── */
+let sock;
+function makeSocket() {
+  const h = {}; const s = {
+    connected: true, emitted: [], ack: null, disconnected: false,
+    on: (e, f) => { h[e] = f; return s; },
+    removeAllListeners: () => { for (const k in h) delete h[k]; },
+    disconnect: () => { s.disconnected = true; s.connected = false; },
+    connect: vi.fn(),
+    emit: (e, p) => { s.emitted.push([e, p]); },
+    timeout: () => ({ emit: (e, p, cb) => { s.emitted.push([e, p]); s.joinCb = cb; } }),
+    fire: (e, p) => h[e]?.(p),
+  }; return s;
+}
+vi.mock('socket.io-client', () => ({ io: () => (sock = makeSocket()) }));
+vi.mock('@/lib/api', () => ({ api: { meet: { ice: async () => ({ data: { iceServers: [{ urls: 'stun:x' }] } }) } }, getFreshToken: async () => 't' }));
+
+const pcs = [];
+class FakeDC { constructor(l) { this.label = l; this.readyState = 'open'; this.sent = []; } send(m) { this.sent.push(JSON.parse(m)); } close() { this.readyState = 'closed'; } }
+class FakePC {
+  constructor() { this.log = []; this.closed = false; this.remoteDescription = null; this.signalingState = 'stable'; this.tr = []; pcs.push(this); }
+  addTrack(t) { this.tr.push({ sender: { track: t, replaceTrack: vi.fn(async () => {}) }, receiver: { track: { kind: t.kind } } }); }
+  addTransceiver(k) { this.tr.push({ sender: { track: null, replaceTrack: vi.fn(async () => {}) }, receiver: { track: { kind: k } } }); }
+  getTransceivers() { return this.tr; }
+  createDataChannel(l) { this.log.push('createDataChannel'); this.dc = new FakeDC(l); return this.dc; }
+  async createOffer() { this.log.push('createOffer'); return { type: 'offer', sdp: 'o' }; }
+  async createAnswer() { this.log.push('createAnswer'); return { type: 'answer', sdp: 'a' }; }
+  async setLocalDescription(d) { this.localDescription = d; this.signalingState = d.type === 'offer' ? 'have-local-offer' : 'stable'; }
+  async setRemoteDescription(d) { this.remoteDescription = d; this.log.push('setRemote:' + d.type); this.signalingState = 'stable'; }
+  async addIceCandidate(c) { if (!this.remoteDescription) throw new Error('no remote'); this.log.push('ice:' + c.c); }
+  close() { this.closed = true; }
+}
+class FakeMS { constructor() { this.t = []; } getTracks() { return this.t; } addTrack(x) { this.t.push(x); } getAudioTracks() { return this.t.filter((x) => x.kind === 'audio'); } getVideoTracks() { return this.t.filter((x) => x.kind === 'video'); } }
+globalThis.RTCPeerConnection = FakePC;
+globalThis.MediaStream = FakeMS;
+
+import useMeetRoom from './useMeetRoom';
+
+const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+const camStream = () => { const s = new FakeMS(); s.t.push({ kind: 'audio' }, { kind: 'video' }); return s; };
+async function setup(extra = {}, create = false) {
+  const hook = renderHook(() => useMeetRoom({ roomId: 'abc-defg-hij', create, selfId: 'me', stream: camStream(), ...extra }));
+  await act(async () => { await hook.result.current.join({ mic: true, cam: true }); });
+  act(() => sock.fire('connect'));
+  return hook;
+}
+const ackOk = (peers = [], hostId = 'me') => act(async () => { sock.joinCb(null, { ok: true, hostId, peers }); });
+const signalsTo = (id) => sock.emitted.filter(([e, p]) => e === 'meet:signal' && p.to === id).map(([, p]) => p.data);
+
+beforeEach(() => { pcs.length = 0; sock = null; });
+
+describe('useMeetRoom', () => {
+  it('newcomer offers to everyone already present, creating the data channel first', async () => {
+    const { result } = await setup();
+    await ackOk([{ id: 'u2', name: 'Bea' }, { id: 'u3', name: 'Cy' }]);
+    await flush();
+    expect(result.current.status).toBe('joined');
+    expect(pcs).toHaveLength(2);
+    for (const pc of pcs) { expect(pc.log.indexOf('createDataChannel')).toBeLessThan(pc.log.indexOf('createOffer')); expect(pc.dc.label).toBe('meet'); }
+    expect(signalsTo('u2')[0].type).toBe('offer');
+    expect(signalsTo('u3')[0].type).toBe('offer');
+  });
+
+  it('existing member never offers; answers, and queues ICE until the remote description is set', async () => {
+    const { result } = await setup({}, true);
+    await ackOk([]);
+    act(() => sock.fire('meet:peer-joined', { id: 'u2', name: 'Bea' }));
+    await flush();
+    expect(signalsTo('u2')).toHaveLength(0);                    // wait for THEIR offer
+    expect(pcs[0].log).not.toContain('createOffer');
+    await act(async () => { await sock.fire('meet:signal', { from: 'u2', data: { type: 'candidate', candidate: { c: 1 } } }); });
+    expect(pcs[0].log.some((l) => l.startsWith('ice:'))).toBe(false);   // queued, not applied
+    await act(async () => { await sock.fire('meet:signal', { from: 'u2', data: { type: 'offer', sdp: 'x' } }); });
+    expect(pcs[0].log.indexOf('setRemote:offer')).toBeLessThan(pcs[0].log.indexOf('ice:1'));
+    expect(signalsTo('u2').at(-1).type).toBe('answer');
+    expect(result.current.peers.map((p) => p.name)).toEqual(['Bea']);
+  });
+
+  it('answer is only accepted in have-local-offer', async () => {
+    await setup(); await ackOk([{ id: 'u2', name: 'B' }]); await flush();
+    pcs[0].signalingState = 'stable';
+    await act(async () => { await sock.fire('meet:signal', { from: 'u2', data: { type: 'answer', sdp: 'a' } }); });
+    expect(pcs[0].log).not.toContain('setRemote:answer');
+  });
+
+  it.each(['room-full', 'not-found', 'invalid-room'])('ack error %s ends in error state and closes the socket', async (code) => {
+    const { result } = await setup();
+    await act(async () => { sock.joinCb(null, { error: code }); });
+    expect(result.current.status).toBe('error');
+    expect(result.current.error.code).toBe(code);
+    expect(sock.disconnected).toBe(true);
+  });
+
+  it('kicked / ended close everything', async () => {
+    const { result } = await setup(); await ackOk([{ id: 'u2', name: 'B' }]); await flush();
+    act(() => sock.fire('meet:kicked'));
+    expect(result.current.status).toBe('ended'); expect(result.current.error.code).toBe('kicked');
+    expect(pcs.every((p) => p.closed)).toBe(true); expect(sock.disconnected).toBe(true);
+  });
+
+  it('host-changed updates isHost; force-mute calls back', async () => {
+    const onForceMute = vi.fn();
+    const { result } = await setup({ onForceMute }); await ackOk([{ id: 'u2', name: 'B' }], 'u2');
+    expect(result.current.isHost).toBe(false);
+    act(() => sock.fire('meet:host-changed', { hostId: 'me' }));
+    expect(result.current.isHost).toBe(true);
+    act(() => sock.fire('meet:force-mute')); expect(onForceMute).toHaveBeenCalled();
+  });
+
+  it('data channel: captions, chat, state; malformed and oversized input ignored; name comes from server', async () => {
+    const { result } = await setup(); await ackOk([{ id: 'u2', name: 'Bea' }]); await flush();
+    const dc = pcs[0].dc;
+    const send = (m) => act(() => dc.onmessage({ data: typeof m === 'string' ? m : JSON.stringify(m) }));
+    send({ type: 'caption', source: 'speech', text: 'hello', final: false });
+    expect(result.current.captions.u2.speech.text).toBe('hello');
+    send({ type: 'caption', source: 'sign', text: 'HELLO' }); send({ type: 'caption', source: 'sign', text: 'WORLD' });
+    expect(result.current.captions.u2.sign.text).toBe('HELLO WORLD');
+    send({ type: 'chat', text: 'hi', name: 'Evil' });
+    expect(result.current.chat.at(-1)).toMatchObject({ name: 'Bea', text: 'hi', own: false });
+    send({ type: 'state', mic: false, cam: true, signing: true });
+    expect(result.current.peers[0]).toMatchObject({ mic: false, signing: true });
+    send('not json'); send({ type: 'caption', source: 'weird', text: 'x' }); send('x'.repeat(5000));
+    expect(result.current.chat).toHaveLength(1);
+    expect(result.current.captions.u2.speech.text).toBe('hello');
+  });
+
+  it('speech captions expire after 6 s, sign after 4 s', async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = await setup(); await ackOk([{ id: 'u2', name: 'B' }]);
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      const dc = pcs[0].dc;
+      act(() => dc.onmessage({ data: JSON.stringify({ type: 'caption', source: 'sign', text: 'A' }) }));
+      act(() => dc.onmessage({ data: JSON.stringify({ type: 'caption', source: 'speech', text: 'b', final: true }) }));
+      act(() => { vi.advanceTimersByTime(4100); });
+      expect(result.current.captions.u2.sign).toBeUndefined(); expect(result.current.captions.u2.speech).toBeDefined();
+      act(() => { vi.advanceTimersByTime(2000); });
+      expect(result.current.captions.u2).toBeUndefined();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('sendCaption/sendChat/sendState broadcast over the channel; new channel gets current state on open', async () => {
+    const { result } = await setup(); await ackOk([{ id: 'u2', name: 'B' }]); await flush();
+    act(() => { result.current.sendCaption('speech', 'yo', true); result.current.sendChat(' hey '); result.current.sendState({ mic: false }); });
+    const sent = pcs[0].dc.sent;
+    expect(sent).toContainEqual({ type: 'caption', source: 'speech', text: 'yo', final: true });
+    expect(sent).toContainEqual({ type: 'chat', text: 'hey' });
+    expect(sent.at(-1)).toMatchObject({ type: 'state', mic: false, cam: true });
+    expect(result.current.chat.at(-1).own).toBe(true);
+    pcs[0].dc.sent.length = 0; pcs[0].dc.onopen();
+    expect(pcs[0].dc.sent[0]).toMatchObject({ type: 'state', mic: false });
+  });
+
+  it('setOutgoingVideo replaces the track on every video sender (no renegotiation) and new peers inherit it', async () => {
+    const { result } = await setup(); await ackOk([{ id: 'u2', name: 'B' }]); await flush();
+    const screen = { kind: 'video', id: 'screen' };
+    act(() => result.current.setOutgoingVideo(screen));
+    const v = pcs[0].tr.find((t) => t.receiver.track.kind === 'video');
+    expect(v.sender.replaceTrack).toHaveBeenCalledWith(screen);
+    expect(pcs[0].log.filter((l) => l === 'createOffer')).toHaveLength(1);
+    act(() => sock.fire('meet:peer-joined', { id: 'u3', name: 'C' }));
+    expect(pcs[1].tr.find((t) => t.receiver.track.kind === 'video').sender.track).toBe(screen);
+  });
+
+  it('works with no camera/mic: transceivers are still added so a video sender exists', async () => {
+    const hook = renderHook(() => useMeetRoom({ roomId: 'abc-defg-hij', selfId: 'me', stream: null }));
+    await act(async () => { await hook.result.current.join({}); }); act(() => sock.fire('connect'));
+    await ackOk([{ id: 'u2', name: 'B' }]); await flush();
+    expect(pcs[0].tr.map((t) => t.receiver.track.kind).sort()).toEqual(['audio', 'video']);
+  });
+
+  it('peer-left removes the peer, closes its pc and clears its captions', async () => {
+    const { result } = await setup(); await ackOk([{ id: 'u2', name: 'B' }]); await flush();
+    act(() => pcs[0].dc.onmessage({ data: JSON.stringify({ type: 'caption', source: 'speech', text: 'x', final: true }) }));
+    act(() => sock.fire('meet:peer-left', { id: 'u2' }));
+    expect(result.current.peers).toHaveLength(0); expect(pcs[0].closed).toBe(true); expect(result.current.captions.u2).toBeUndefined();
+  });
+
+  it('reconnect: drops peers, rejoins; not-found on rejoin retries with create:true', async () => {
+    const { result } = await setup({}, true); await ackOk([{ id: 'u2', name: 'B' }]); await flush();
+    act(() => sock.fire('disconnect', 'transport close'));
+    expect(result.current.status).toBe('reconnecting'); expect(pcs[0].closed).toBe(true); expect(result.current.peers).toHaveLength(0);
+    sock.emitted.length = 0;
+    act(() => sock.fire('connect'));
+    expect(sock.emitted[0]).toEqual(['meet:join', { roomId: 'abc-defg-hij', create: false }]);   // first-time create flag is not reused
+    await act(async () => { sock.joinCb(null, { error: 'not-found' }); });
+    expect(sock.emitted[1]).toEqual(['meet:join', { roomId: 'abc-defg-hij', create: true }]);
+    await act(async () => { sock.joinCb(null, { ok: true, hostId: 'me', peers: [] }); });
+    expect(result.current.status).toBe('joined');
+  });
+
+  it('server-initiated disconnect triggers a manual reconnect', async () => {
+    await setup(); await ackOk([]);
+    act(() => sock.fire('disconnect', 'io server disconnect'));
+    expect(sock.connect).toHaveBeenCalled();
+  });
+
+  it('leave and unmount emit meet:leave, close all pcs and disconnect', async () => {
+    const a = await setup(); await ackOk([{ id: 'u2', name: 'B' }]); await flush();
+    const s1 = sock; act(() => a.result.current.leave());
+    expect(s1.emitted.some(([e]) => e === 'meet:leave')).toBe(true); expect(pcs[0].closed).toBe(true); expect(s1.disconnected).toBe(true);
+    expect(a.result.current.status).toBe('left');
+    const b = await setup(); await ackOk([{ id: 'u2', name: 'B' }]); await flush();
+    const s2 = sock; b.unmount();
+    expect(s2.disconnected).toBe(true); expect(pcs.at(-1).closed).toBe(true);
+  });
+
+  it('host actions emit the right events', async () => {
+    const { result } = await setup(); await ackOk([{ id: 'u2', name: 'B' }]);
+    act(() => { result.current.kick('u2'); result.current.mute('u2'); result.current.endForAll(); });
+    const ev = sock.emitted.map(([e]) => e);
+    expect(ev).toEqual(expect.arrayContaining(['meet:kick', 'meet:mute', 'meet:end']));
+  });
+});
+
+========================================================================
+FILE: frontend-react/src/lib/meet/useSignCaptions.js
+========================================================================
+/* eslint-disable react-hooks/exhaustive-deps -- long-lived callbacks are read through refs on purpose */
+import { useEffect, useRef, useState } from 'react';
+import { makeCaptioner } from './captioner';
+import { makeSlowGuard } from './slowGuard';
+import { drawHand } from './drawHand';
+
+/**
+ * Sign-gesture captions. While `enabled`, runs the hand-landmark model on the LOCAL <video> element
+ * (the raw camera video, not a canvas copy), turns predictions into words and calls onWord(text).
+ * Everything happens on this device; no frame is ever uploaded.
+ *
+ * - The MediaPipe bundle is fetched with a dynamic import inside createSignEngine, so nothing is
+ *   downloaded until the first time sign mode is switched on.
+ * - Draws the hand skeleton on `canvasRef` (which must sit over the video).
+ * - onAutoDisable(reason) fires if loading fails ('error') or frames are consistently too slow ('slow').
+ *
+ * Returns { status: 'off' | 'loading' | 'running', debug: { label, conf, ms } | null }.
+ * `debug` is updated ~4x/second (never per frame) so it costs no re-renders.
+ */
+export default function useSignCaptions({ enabled, videoRef, canvasRef, onWord, onAutoDisable }) {
+  const [status, setStatus] = useState('off');
+  const [debug, setDebug] = useState(null);
+  const cb = useRef({ onWord, onAutoDisable });
+  cb.current = { onWord, onAutoDisable };
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let cancelled = false, engine = null;
+    setStatus('loading');
+    const captioner = makeCaptioner();
+    const guard = makeSlowGuard();
+    let lastDebug = 0;
+
+    (async () => {
+      try {
+        const { createSignEngine } = await import('./signEngine');            // lazy: only when sign mode is turned on
+        const video = videoRef.current;
+        if (!video) throw new Error('no local video element');
+        const e = await createSignEngine({
+          video,
+          onResult: (r) => {
+            if (cancelled) return;
+            drawHand(canvasRef.current, video, r.landmarks);
+            const word = captioner(r.label, r.conf);
+            if (word) cb.current.onWord(word.text);
+            const now = performance.now();
+            if (now - lastDebug > 250) { lastDebug = now; setDebug({ label: r.label, conf: r.conf, ms: r.ms }); }
+            if (guard(r.ms)) { cb.current.onAutoDisable('slow'); }
+          },
+        });
+        if (cancelled) { e.close(); return; }                                  // toggled off while the model was loading
+        engine = e; e.start(); setStatus('running');
+      } catch (err) {
+        console.warn('[sign] could not start', err);
+        if (!cancelled) cb.current.onAutoDisable('error');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try { engine?.close(); } catch { /* already closed */ }
+      drawHand(canvasRef.current, null, null);                                  // clear the skeleton
+      setStatus('off'); setDebug(null);
+    };
+  }, [enabled]);
+
+  return { status, debug };
+}
+
+========================================================================
 FILE: frontend-react/src/lib/phrases.js
 ========================================================================
 // Used only if the phrase API is unreachable.
@@ -8270,7 +10164,7 @@ FILE: frontend-react/src/lib/useSpeech.js
 ========================================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
 /** Thin wrapper around the browser Web Speech API. */
-export function useSpeechRecognition({ lang, continuous = false, onFinal }) {
+export function useSpeechRecognition({ lang, continuous = false, onFinal, onInterim }) {
     const [supported, setSupported] = useState(true);
     const [listening, setListening] = useState(false);
     const [text, setText] = useState('');
@@ -8279,6 +10173,8 @@ export function useSpeechRecognition({ lang, continuous = false, onFinal }) {
     const finalRef = useRef('');
     const onFinalRef = useRef(onFinal);
     onFinalRef.current = onFinal;
+    const onInterimRef = useRef(onInterim);
+    onInterimRef.current = onInterim;
     useEffect(() => {
         const w = window;
         const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -8315,6 +10211,9 @@ export function useSpeechRecognition({ lang, continuous = false, onFinal }) {
                 else
                     interim += t;
             }
+            // Optional: interim-only text of this event (used by Meet to stream live captions).
+            if (interim.trim())
+                onInterimRef.current?.(interim.trim());
             setText((finalRef.current + ' ' + interim).trim());
         };
         rec.onerror = (e) => {
@@ -8659,6 +10558,7 @@ function Landing() {
             <nav className="lp-links" aria-label="Primary">
               <a href="#features">Features</a>
               <a href="#how">How it works</a>
+              <a href="https://deluxe-chaja-074488.netlify.app/" target="_blank" rel="noopener noreferrer">Explore</a>
             </nav>
             <div className="lp-actions">
               {user ? (<Link to="/dashboard" className="lp-btn lp-btn-primary">Dashboard</Link>) : (<>
@@ -8989,6 +10889,7 @@ const NAV = [
     { href: '/dashboard/tutor', label: 'AI Tutor', icon: 'sparkle' },
     { href: '/dashboard/progress', label: 'Progress', icon: 'bar-chart' },
     { href: '/dashboard/community', label: 'Community', icon: 'users' },
+    { href: '/dashboard/meet', label: 'Meet', icon: 'video' },
     { href: '/dashboard/sessions', label: 'Sessions', icon: 'calendar' },
     { href: '/dashboard/leaderboard', label: 'Leaderboard', icon: 'trophy' },
 ];
@@ -9091,6 +10992,609 @@ export default function LeaderboardPage() {
             </ol>)}
       </Card>
     </>);
+}
+
+========================================================================
+FILE: frontend-react/src/pages/dashboard/Meet.jsx
+========================================================================
+import '@/styles/meet.css';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Icon from '@/components/Icon';
+import { Card, CardTitle, Chip, PageHeader } from '@/components/ui';
+import { SOCKET_URL } from '@/lib/config';
+import { generateRoomId, parseRoomInput } from '@/lib/meet/roomId';
+
+const SERVER_CHIP = {
+  checking: { tone: 'neutral', text: 'Checking server…' },
+  waking: { tone: 'amber', text: 'Waking server… this can take up to a minute' },
+  ready: { tone: 'green', text: 'Server ready' },
+  down: { tone: 'red', text: 'Server unreachable' },
+};
+
+/** The free Render tier sleeps when idle; ping /health so the first call is not a long, silent wait. */
+function useServerStatus() {
+  const [status, setStatus] = useState('checking');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    setStatus('checking');
+    const ac = new AbortController();
+    const slow = setTimeout(() => setStatus((s) => (s === 'checking' ? 'waking' : s)), 2500);
+    const giveUp = setTimeout(() => ac.abort(), 90_000);
+    fetch(`${SOCKET_URL}/health`, { signal: ac.signal, cache: 'no-store' })
+      .then((r) => setStatus(r.ok ? 'ready' : 'down'))
+      .catch(() => setStatus('down'))
+      .finally(() => { clearTimeout(slow); clearTimeout(giveUp); });
+    return () => { ac.abort(); clearTimeout(slow); clearTimeout(giveUp); };
+  }, [attempt]);
+  return [status, () => setAttempt((n) => n + 1)];
+}
+
+export default function MeetLobby() {
+  const navigate = useNavigate();
+  const [server, recheck] = useServerStatus();
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+
+  const start = () => navigate(`/dashboard/meet/${generateRoomId()}`, { state: { create: true } });
+
+  const join = (e) => {
+    e.preventDefault();
+    const id = parseRoomInput(code);
+    if (!id) { setError('Enter a code like abc-defg-hij, or paste the meeting link.'); return; }
+    navigate(`/dashboard/meet/${id}`);
+  };
+
+  const chip = SERVER_CHIP[server];
+
+  return (<div className="meet">
+    <PageHeader title="Meet" subtitle="Video meetings for up to 3 people, with live captions and sign-gesture captions."
+      actions={<span className="meet-server">
+        <Chip tone={chip.tone} dot>{chip.text}</Chip>
+        {server === 'down' && <button type="button" className="btn btn-outline btn-sm" onClick={recheck}>Retry</button>}
+      </span>}/>
+
+    <div className="meet-lobby">
+      <Card>
+        <CardTitle icon="video">Start a meeting</CardTitle>
+        <p className="muted small meet-lead">You get a code to share. Up to 3 people can be in a meeting at once.</p>
+        <button type="button" className="btn btn-primary" onClick={start}>
+          <Icon name="plus" size={18}/> New meeting
+        </button>
+      </Card>
+
+      <Card>
+        <CardTitle icon="users">Join with a code</CardTitle>
+        <form onSubmit={join} noValidate>
+          <div className="field">
+            <label htmlFor="meet-code">Meeting code or link</label>
+            <input id="meet-code" className="input" value={code} placeholder="abc-defg-hij" autoComplete="off" spellCheck={false}
+              aria-invalid={!!error} aria-describedby={error ? 'meet-code-err' : undefined}
+              onChange={(e) => { setCode(e.target.value); setError(''); }}/>
+            {error && <span id="meet-code-err" className="field-error" role="alert">{error}</span>}
+          </div>
+          <button type="submit" className="btn btn-outline" disabled={!code.trim()}>
+            Join <Icon name="arrow-right" size={18}/>
+          </button>
+        </form>
+      </Card>
+
+      <Card className="meet-privacy">
+        <CardTitle icon="globe">How your data is handled</CardTitle>
+        <ul className="meet-facts">
+          <li>Video and audio go directly between participants (peer-to-peer). They are never sent to or stored on our server.</li>
+          <li>Sign-gesture recognition runs on your device. No video frames leave your browser.</li>
+          <li>Speech captions use Chrome’s speech service, which sends your audio to Google.</li>
+          <li>Chat messages are not saved and disappear when the meeting ends.</li>
+          <li>A meeting exists only while someone is in it, so share the link after you have joined.</li>
+        </ul>
+      </Card>
+    </div>
+  </div>);
+}
+
+========================================================================
+FILE: frontend-react/src/pages/dashboard/MeetRoom.jsx
+========================================================================
+import '@/styles/meet.css';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import Icon from '@/components/Icon';
+import VideoTile from '@/components/VideoTile';
+import { Avatar, Chip, EmptyState, SegmentedControl, Switch } from '@/components/ui';
+import { LANGUAGES } from '@/lib/config';
+import { useAuth } from '@/lib/auth-context';
+import { useToast } from '@/lib/toast';
+import { useSpeechRecognition } from '@/lib/useSpeech';
+import useLocalMedia, { MEDIA_ERRORS } from '@/lib/meet/useLocalMedia';
+import useMeetRoom from '@/lib/meet/useMeetRoom';
+import useSignCaptions from '@/lib/meet/useSignCaptions';
+import { ROOM_ID_RE, roomLink } from '@/lib/meet/roomId';
+
+const INTERIM_MIN_GAP_MS = 330;   // ≈3 interim speech captions per second at most
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Pre-join screen: camera preview, toggles, device pickers, permission help
+   ════════════════════════════════════════════════════════════════════════════ */
+function PreJoin({ media, roomId, creating, onJoin, onCopy }) {
+  const videoRef = useRef(null);
+  const hasAudio = !!media.stream?.getAudioTracks().length;
+  const hasVideo = !!media.stream?.getVideoTracks().length;
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = media.stream || null;
+  }, [media.stream]);
+
+  const label = (d, i, kind) => d.label || `${kind} ${i + 1}`;
+  const blocking = media.error && media.error !== 'notfound';
+
+  return (<div className="meet-prejoin">
+    <div className="meet-preview">
+      <video ref={videoRef} autoPlay playsInline muted className="mirror" aria-label="Your camera preview"/>
+      {(!hasVideo || !media.cam) && (<div className="meet-tile-off"><Avatar name="You" size={72}/></div>)}
+      <div className="meet-preview-ctl">
+        <button type="button" className={`meet-ctl ${media.mic && hasAudio ? '' : 'off'}`} disabled={!hasAudio}
+          aria-pressed={!media.mic} aria-label={media.mic ? 'Turn microphone off' : 'Turn microphone on'}
+          onClick={() => media.setMic(!media.mic)}>
+          <Icon name={media.mic && hasAudio ? 'mic' : 'mic-off'}/>
+        </button>
+        <button type="button" className={`meet-ctl ${media.cam && hasVideo ? '' : 'off'}`} disabled={!hasVideo}
+          aria-pressed={!media.cam} aria-label={media.cam ? 'Turn camera off' : 'Turn camera on'}
+          onClick={() => media.setCam(!media.cam)}>
+          <Icon name={media.cam && hasVideo ? 'video' : 'video-off'}/>
+        </button>
+      </div>
+    </div>
+
+    <div className="meet-prejoin-side">
+      <h2>{creating ? 'Ready to start?' : 'Ready to join?'}</h2>
+      <p className="muted small">Meeting code: <b className="meet-code">{roomId}</b>{' '}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCopy} aria-label="Copy meeting link">
+          <Icon name="copy" size={16}/> Copy link
+        </button>
+      </p>
+
+      {media.error && (<div className={`form-msg ${blocking ? 'error' : ''} meet-note`} role="alert">
+        {MEDIA_ERRORS[media.error]}
+        {media.error !== 'notfound' && media.error !== 'unsupported' && (
+          <> <button type="button" className="btn btn-outline btn-sm" onClick={() => media.start()}>Try again</button></>)}
+      </div>)}
+
+      {(media.devices.audio.length > 0 || media.devices.video.length > 0) && (<>
+        <div className="field">
+          <label htmlFor="meet-mic">Microphone</label>
+          <select id="meet-mic" className="input" value={media.ids.audio}
+            onChange={(e) => media.start({ audio: e.target.value })} disabled={!media.devices.audio.length}>
+            {media.devices.audio.map((d, i) => <option key={d.deviceId || i} value={d.deviceId}>{label(d, i, 'Microphone')}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="meet-cam">Camera</label>
+          <select id="meet-cam" className="input" value={media.ids.video}
+            onChange={(e) => media.start({ video: e.target.value })} disabled={!media.devices.video.length}>
+            {media.devices.video.map((d, i) => <option key={d.deviceId || i} value={d.deviceId}>{label(d, i, 'Camera')}</option>)}
+          </select>
+        </div>
+      </>)}
+
+      <button type="button" className="btn btn-primary btn-lg" onClick={onJoin}>
+        {!hasAudio && !hasVideo ? 'Join without camera or mic' : creating ? 'Start meeting' : 'Join now'}
+      </button>
+      <p className="muted small meet-privacy-line">
+        Video and audio go directly between participants. Sign recognition runs on your device. Speech captions, if you turn them on, use Google’s speech service.
+      </p>
+    </div>
+  </div>);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Side panel: chat + participants
+   ════════════════════════════════════════════════════════════════════════════ */
+function SidePanel({ tab, setTab, onClose, room, selfName, selfId, media, confirm, ask, panelRef }) {
+  const [text, setText] = useState('');
+  const endRef = useRef(null);
+  useEffect(() => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (tab === 'chat') endRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+  }, [room.chat, tab]);
+
+  const send = (e) => { e.preventDefault(); room.sendChat(text); setText(''); };
+
+  return (<aside className="meet-side" ref={panelRef} tabIndex={-1} aria-label="Meeting side panel">
+    <div className="meet-side-head">
+      <SegmentedControl ariaLabel="Panel" value={tab} onChange={setTab}
+        options={[{ value: 'chat', label: 'Chat' }, { value: 'people', label: `People (${room.peers.length + 1})` }]}/>
+      <button type="button" className="icon-btn" onClick={onClose} aria-label="Close panel"><Icon name="close" size={18}/></button>
+    </div>
+
+    {tab === 'chat' ? (<>
+      <p className="meet-chat-note muted small">Messages go directly to the other people here. They are not saved and disappear when the meeting ends.</p>
+      <div className="meet-chat" role="log" aria-live="polite" aria-label="Meeting chat">
+        {room.chat.length === 0 ? <EmptyState icon="message" message="No messages yet."/> : room.chat.map((m) => (
+          <div key={m.id} className={`meet-msg ${m.own ? 'own' : ''}`}>
+            {!m.own && <b>{m.name}</b>}
+            <div className="bubble">{m.text}</div>
+          </div>))}
+        <div ref={endRef}/>
+      </div>
+      <form className="composer" onSubmit={send}>
+        <input className="input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Message everyone…" maxLength={500} aria-label="Chat message"/>
+        <button type="submit" className="icon-btn primary" aria-label="Send message" disabled={!text.trim()}><Icon name="send" size={20}/></button>
+      </form>
+    </>) : (<ul className="meet-people" aria-label="Participants">
+      <li>
+        <Avatar name={selfName} size={32}/>
+        <span className="meet-person-name">{selfName} (You)</span>
+        {room.isHost && <Chip tone="teal">Host</Chip>}
+        {!media.mic && <><Icon name="mic-off" size={16}/><span className="sr-only">Muted</span></>}
+      </li>
+      {room.peers.map((p) => (<li key={p.id}>
+        <Avatar name={p.name} size={32}/>
+        <span className="meet-person-name">{p.name}</span>
+        {room.hostId === p.id && <Chip tone="teal">Host</Chip>}
+        {p.signing && <Chip tone="amber" icon="hand">Signing</Chip>}
+        {!p.mic && <><Icon name="mic-off" size={16}/><span className="sr-only">Muted</span></>}
+        {room.isHost && (<span className="meet-person-actions">
+          <button type="button" className="btn btn-outline btn-sm" disabled={!p.mic} onClick={() => room.mute(p.id)}>Mute</button>
+          <button type="button" className="btn btn-outline btn-sm danger" onClick={() => ask(`kick:${p.id}`, () => room.kick(p.id))}>
+            {confirm === `kick:${p.id}` ? 'Confirm?' : 'Remove'}
+          </button>
+        </span>)}
+      </li>))}
+      <li className="meet-people-note muted small">Video and audio are peer-to-peer. Sign recognition runs on your device. Speech captions use Google’s speech service.</li>
+    </ul>)}
+  </aside>);
+}
+
+/* Screen-reader captions. The visible caption lines flicker (interim speech, running sign words), so they are
+   aria-hidden; this region announces each person's line once it has been stable for ~1.2 s. */
+function CaptionAnnouncer({ captions, names, selfId, showSpeech }) {
+  const [msg, setMsg] = useState('');
+  const seen = useRef({});
+  const timers = useRef({});
+  useEffect(() => {
+    const live = new Set();
+    for (const [id, per] of Object.entries(captions)) {
+      if (id === selfId) continue;                                            // you do not need your own captions read back
+      for (const src of ['speech', 'sign']) {
+        const t = per[src]?.text;
+        if (!t || (src === 'speech' && !showSpeech)) continue;
+        const key = `${id}:${src}`; live.add(key);
+        if (seen.current[key] === t) continue;
+        seen.current[key] = t;
+        clearTimeout(timers.current[key]);
+        timers.current[key] = setTimeout(() => setMsg(`${names[id] || 'Someone'} ${src === 'sign' ? 'signs' : 'says'}: ${t}`), 1200);
+      }
+    }
+    for (const k of Object.keys(seen.current)) if (!live.has(k)) delete seen.current[k];   // line expired: next one is new
+  }, [captions, names, selfId, showSpeech]);
+  useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), []);
+  return <div className="sr-only" role="log" aria-live="polite" aria-atomic="true" aria-label="Live captions">{msg}</div>;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Page
+   ════════════════════════════════════════════════════════════════════════════ */
+export default function MeetRoom() {
+  const { roomId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const toast = useToast();
+  const valid = ROOM_ID_RE.test(roomId || '');
+  const creating = !!location.state?.create;
+
+  const media = useLocalMedia();
+  const [phase, setPhase] = useState('prejoin');      // prejoin | call
+  const [panel, setPanel] = useState(null);           // null | 'chat' | 'people'
+  const [capOpen, setCapOpen] = useState(false);
+  const [speechOn, setSpeechOn] = useState(false);    // transcribe MY speech and send it
+  const [signOn, setSignOn] = useState(false);      // recognise MY signs (on-device) and send words
+  const [showCaps, setShowCaps] = useState(true);     // show OTHER people's speech captions
+  const [speechLang, setSpeechLang] = useState(LANGUAGES[0].speech);
+  const [confirm, setConfirm] = useState(null);       // two-step confirmation key
+  const [seenChat, setSeenChat] = useState(0);
+  const chatBtnRef = useRef(null);
+  const peopleBtnRef = useRef(null);
+  const capBtnRef = useRef(null);
+  const panelRef = useRef(null);
+  const lastPanel = useRef(null);
+
+  // `media` and `room` are rebuilt every render; long-lived callbacks read them through refs.
+  const mediaRef = useRef(media);
+  mediaRef.current = media;
+  const roomRef = useRef(null);
+
+  const room = useMeetRoom({
+    roomId, create: creating, selfId: user.id, stream: media.stream,
+    onForceMute: () => {
+      mediaRef.current.setMic(false);
+      roomRef.current?.sendState({ mic: false });
+      toast('The host muted your microphone.', 'info');
+    },
+    onNotice: (n) => {
+      if (n.type === 'joined') toast(`${n.name} joined`, 'info');
+      else if (n.type === 'left') toast(`${n.name} left`, 'info');
+      else if (n.type === 'host') toast('You are now the host.', 'info');
+    },
+  });
+  roomRef.current = room;
+
+  const inCall = phase === 'call';
+  const joined = room.status === 'joined';
+  const closed = inCall && (room.status === 'error' || room.status === 'ended');
+  const hasAudio = !!media.stream?.getAudioTracks().length;
+  const hasVideo = !!media.stream?.getVideoTracks().length;
+
+  /* ── lifecycle ────────────────────────────────────────────────────────── */
+  useEffect(() => { if (valid) media.start(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [valid]);
+  useEffect(() => { if (closed) media.stop(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [closed]);
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(roomLink(roomId)); toast('Meeting link copied', 'success'); }
+    catch { toast('Could not copy. Select and copy the code instead.', 'error'); }
+  };
+
+  const ask = useCallback((key, action) => {
+    setConfirm((c) => {
+      if (c === key) { action(); return null; }
+      setTimeout(() => setConfirm((x) => (x === key ? null : x)), 4000);
+      return key;
+    });
+  }, []);
+
+  const join = () => {
+    setPhase('call');
+    room.join({ mic: media.mic && hasAudio, cam: media.cam && hasVideo, signing: false, sharing: false });
+  };
+
+  const leave = () => { room.leave(); media.stop(); navigate('/dashboard/meet'); };
+  const endAll = () => { room.endForAll(); media.stop(); navigate('/dashboard/meet'); };
+  const retry = () => { setPhase('prejoin'); setPanel(null); setSpeechOn(false); setSignOn(false); media.start(); };
+
+  /* ── mic / cam / screen share ─────────────────────────────────────────── */
+  const toggleMic = () => { const on = !media.mic; media.setMic(on); room.sendState({ mic: on }); };
+  const toggleCam = () => { const on = !media.cam; media.setCam(on); room.sendState({ cam: on }); };
+
+  const stopSharing = useCallback(() => {
+    const m = mediaRef.current;
+    m.stopShare();
+    roomRef.current?.setOutgoingVideo(m.stream?.getVideoTracks()[0] ?? null);   // back to the camera
+    roomRef.current?.sendState({ sharing: false });
+  }, []);
+
+  const toggleShare = async () => {
+    if (media.screenTrack) return stopSharing();
+    const track = await media.startShare();
+    if (!track) { toast('Screen sharing was cancelled or is not available in this browser.', 'info'); return; }
+    track.addEventListener('ended', stopSharing, { once: true });   // the browser's own "Stop sharing" bar
+    room.setOutgoingVideo(track);
+    room.sendState({ sharing: true });
+  };
+
+  /* ── speech captions (Phase 3) ────────────────────────────────────────── */
+  const lastInterim = useRef(0);
+  const speech = useSpeechRecognition({
+    lang: speechLang,
+    continuous: true,
+    onFinal: (t) => roomRef.current?.sendCaption('speech', t, true),            // every final result, once
+    onInterim: (t) => {                                                         // throttled live preview
+      const now = Date.now();
+      if (now - lastInterim.current < INTERIM_MIN_GAP_MS) return;
+      lastInterim.current = now;
+      roomRef.current?.sendCaption('speech', t, false);
+    },
+  });
+
+  // Chrome's recognizer opens its OWN mic capture, so muting the WebRTC track would not stop it.
+  // We therefore only run it while the mic is actually on.
+  const wantSpeech = speechOn && joined && media.mic && hasAudio;
+  const wantRef = useRef(false);
+  wantRef.current = wantSpeech;
+  const wasListening = useRef(false);
+  useEffect(() => {
+    if (wantSpeech) speech.start();
+    else speech.stop();
+    return () => speech.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantSpeech, speechLang]);
+  useEffect(() => {
+    if (speech.listening) { wasListening.current = true; return; }
+    if (wasListening.current && wantRef.current) {                              // stopped by itself: service error / permission
+      toast('Speech captions stopped. The speech service may be unavailable.', 'error');
+      setSpeechOn(false);
+    }
+    wasListening.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speech.listening]);
+
+  /* ── sign captions (Phase 4) ──────────────────────────────────────────── */
+  const localVideoRef = useRef(null);
+  const skeletonRef = useRef(null);
+  // The model reads the CAMERA, so pause it while the tile shows a screen share or the camera is off.
+  const signRunnable = signOn && joined && media.cam && hasVideo && !media.screenTrack;
+  const sign = useSignCaptions({
+    enabled: signRunnable,
+    videoRef: localVideoRef,
+    canvasRef: skeletonRef,
+    onWord: (w) => roomRef.current?.sendCaption('sign', w),
+    onAutoDisable: (why) => {
+      setSignOn(false);
+      toast(why === 'slow'
+        ? 'Sign captions turned off: this device is too slow to keep up.'
+        : 'Could not start sign captions. Check your connection and try again.', 'error');
+    },
+  });
+  const signing = sign.status === 'running';
+  useEffect(() => { roomRef.current?.sendState({ signing }); }, [signing]);   // "Signing" badge for everyone
+  useEffect(() => { if (closed) setSignOn(false); }, [closed]);
+
+  const toggleSign = () => {
+    if (signOn) { setSignOn(false); return; }
+    if (!hasVideo || !media.cam) { toast('Turn your camera on to use sign captions.', 'info'); return; }
+    if (media.screenTrack) { toast('Stop sharing your screen to use sign captions.', 'info'); return; }
+    setSignOn(true);
+    toast('Sign captions on. Recognition runs on your device; your video is not uploaded.', 'info');
+  };
+
+  /* ── escape closes the captions popover ───────────────────────────────── */
+  useEffect(() => {
+    if (!capOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') { setCapOpen(false); capBtnRef.current?.focus(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [capOpen]);
+  useEffect(() => {                                                             // move focus into the popover when it opens
+    if (capOpen) document.querySelector('#meet-cap-pop button, #meet-cap-pop input, #meet-cap-pop select')?.focus();
+  }, [capOpen]);
+
+  /* ── side panel focus: into the panel when it opens, back to its button when it closes; Esc closes ── */
+  useEffect(() => { if (panel) lastPanel.current = panel; }, [panel]);
+  useEffect(() => {
+    if (panel) { panelRef.current?.focus(); return undefined; }
+    const btn = lastPanel.current === 'chat' ? chatBtnRef : lastPanel.current === 'people' ? peopleBtnRef : null;
+    btn?.current?.focus();
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!panel]);
+  useEffect(() => {
+    if (!panel) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape' && !capOpen) setPanel(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [panel, capOpen]);
+
+  /* ── chat unread badge ────────────────────────────────────────────────── */
+  useEffect(() => { if (panel === 'chat') setSeenChat(room.chat.length); }, [panel, room.chat.length]);
+  const unread = panel === 'chat' ? 0 : room.chat.slice(seenChat).filter((m) => !m.own).length;
+
+  /* ── tiles ────────────────────────────────────────────────────────────── */
+  const sharing = !!media.screenTrack;
+  const localView = useMemo(
+    () => (media.screenTrack ? new MediaStream([media.screenTrack]) : media.stream),
+    [media.screenTrack, media.stream],
+  );
+  const cap = (id, k) => room.captions[id]?.[k]?.text || '';
+
+  /* ════════════ render ════════════ */
+  if (!valid) {
+    return (<div className="meet"><EmptyState icon="video" title="Invalid meeting code"
+      message="Meeting codes look like abc-defg-hij."
+      action={<Link className="btn btn-outline" to="/dashboard/meet">Back to Meet</Link>}/></div>);
+  }
+
+  if (closed) {
+    const kicked = room.error?.code === 'kicked' || room.error?.code === 'ended';
+    return (<div className="meet"><EmptyState icon={kicked ? 'phone-off' : 'video-off'}
+      title={kicked ? 'You left the meeting' : 'Could not join'}
+      message={room.error?.message || 'Something went wrong.'}
+      action={<span className="meet-end-actions">
+        <Link className="btn btn-outline" to="/dashboard/meet">Back to Meet</Link>
+        {!kicked && <button type="button" className="btn btn-primary" onClick={retry}>Try again</button>}
+      </span>}/></div>);
+  }
+
+  if (!inCall) {
+    return (<div className="meet"><PreJoin media={media} roomId={roomId} creating={creating} onJoin={join} onCopy={copyLink}/></div>);
+  }
+
+  const selfName = user.username || 'You';
+  const peerNames = Object.fromEntries(room.peers.map((p) => [p.id, p.name]));
+  const count = room.peers.length + 1;
+  const connectingMsg = room.status === 'connecting'
+    ? (room.connectIssue ? 'Still trying to reach the server…' : 'Connecting… the server may be waking up, this can take up to a minute.')
+    : room.status === 'reconnecting' ? 'Connection lost. Reconnecting…' : null;
+
+  return (<div className={`meet meet-call ${panel ? 'with-panel' : ''}`}>
+    <header className="meet-bar">
+      <span className="meet-code">{roomId}</span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={copyLink} aria-label="Copy meeting link"><Icon name="copy" size={16}/> Copy link</button>
+      <Chip dot>{count} / 3</Chip>
+      {room.isHost && <Chip tone="teal">You are the host</Chip>}
+    </header>
+
+    {connectingMsg && <div className="meet-banner" role="status"><span className="spinner dark" aria-hidden="true"/>{connectingMsg}</div>}
+
+    <div className="meet-stage" data-count={count}>
+      {joined && room.peers.length === 0 && (<div className="meet-invite">
+        <p>You’re the only one here. Share the code <b>{roomId}</b> to invite up to 2 more people.</p>
+        <button type="button" className="btn btn-outline btn-sm" onClick={copyLink}><Icon name="copy" size={16}/> Copy link</button>
+      </div>)}
+
+      <VideoTile local name={selfName} stream={localView} mirror micOn={media.mic && hasAudio}
+        camOn={media.cam && hasVideo} sharing={sharing} host={room.isHost}
+        speech={cap(user.id, 'speech')} sign={cap(user.id, 'sign')} signing={signing} videoRef={localVideoRef}>
+        <canvas ref={skeletonRef} className="meet-skeleton mirror" aria-hidden="true"/>
+        {signOn && (<div className="meet-signdbg" role="status" aria-live="off">
+          {sign.status === 'loading' ? 'Loading sign model…'
+            : sign.debug?.label ? `${sign.debug.label} ${Math.round(sign.debug.conf * 100)}% · ${Math.round(sign.debug.ms)} ms`
+            : 'Show your hand to the camera'}
+        </div>)}
+      </VideoTile>
+
+      {room.peers.map((p) => (<VideoTile key={p.id} name={p.name} stream={p.stream} micOn={p.mic} camOn={p.cam}
+        sharing={p.sharing} signing={p.signing} host={room.hostId === p.id} connection={p.connection}
+        speech={showCaps ? cap(p.id, 'speech') : ''} sign={cap(p.id, 'sign')}/>))}
+    </div>
+
+    <div className="meet-controls" role="toolbar" aria-label="Meeting controls">
+      <button type="button" className={`meet-ctl ${media.mic && hasAudio ? '' : 'off'}`} disabled={!hasAudio} aria-pressed={!media.mic}
+        aria-label={media.mic ? 'Turn microphone off' : 'Turn microphone on'} onClick={toggleMic}>
+        <Icon name={media.mic && hasAudio ? 'mic' : 'mic-off'}/>
+      </button>
+      <button type="button" className={`meet-ctl ${media.cam && hasVideo ? '' : 'off'}`} disabled={!hasVideo} aria-pressed={!media.cam}
+        aria-label={media.cam ? 'Turn camera off' : 'Turn camera on'} onClick={toggleCam}>
+        <Icon name={media.cam && hasVideo ? 'video' : 'video-off'}/>
+      </button>
+      <button type="button" className={`meet-ctl ${sharing ? 'on' : ''}`} aria-pressed={sharing}
+        aria-label={sharing ? 'Stop sharing your screen' : 'Share your screen'} onClick={toggleShare}>
+        <Icon name="monitor"/>
+      </button>
+      <button type="button" className={`meet-ctl ${signOn ? 'on' : ''}`} aria-pressed={signOn}
+        title="Sign captions: recognised on your device, your video is not uploaded"
+        aria-label={signOn ? 'Turn sign captions off' : 'Turn sign captions on'} onClick={toggleSign}>
+        <Icon name="hand"/>
+      </button>
+
+      <span className="meet-pop-wrap">
+        <button type="button" ref={capBtnRef} className={`meet-ctl ${speechOn || showCaps ? 'on' : ''}`} aria-expanded={capOpen} aria-controls="meet-cap-pop"
+          aria-label="Caption settings" onClick={() => setCapOpen((o) => !o)}>
+          <Icon name="captions"/>
+        </button>
+        {capOpen && (<div id="meet-cap-pop" className="meet-pop" role="dialog" aria-label="Caption settings">
+          <Switch checked={showCaps} onChange={setShowCaps} label="Show others’ speech captions"/>
+          {speech.supported ? (<>
+            <Switch checked={speechOn} onChange={setSpeechOn} label="Caption my speech for others"/>
+            <div className="field">
+              <label htmlFor="meet-cap-lang">I am speaking</label>
+              <select id="meet-cap-lang" className="input" value={speechLang} onChange={(e) => setSpeechLang(e.target.value)}>
+                {LANGUAGES.map((l) => <option key={l.code} value={l.speech}>{l.flag} {l.name}</option>)}
+              </select>
+            </div>
+            {speechOn && !media.mic && <p className="small muted">Captions are paused while your microphone is off.</p>}
+            <p className="small muted">Chrome’s speech captions use Google’s speech service: while this is on, your voice is sent to Google for transcription.</p>
+          </>) : (<p className="small muted">This browser cannot transcribe speech, but you can still read other people’s captions.</p>)}
+        </div>)}
+      </span>
+
+      <button type="button" ref={chatBtnRef} className={`meet-ctl ${panel === 'chat' ? 'on' : ''}`} aria-pressed={panel === 'chat'} aria-label={`Chat${unread ? `, ${unread} unread` : ''}`}
+        onClick={() => setPanel((p) => (p === 'chat' ? null : 'chat'))}>
+        <Icon name="message"/>{unread > 0 && <i className="meet-dot" aria-hidden="true">{unread > 9 ? '9+' : unread}</i>}
+      </button>
+      <button type="button" ref={peopleBtnRef} className={`meet-ctl ${panel === 'people' ? 'on' : ''}`} aria-pressed={panel === 'people'} aria-label={`Participants, ${count}`}
+        onClick={() => setPanel((p) => (p === 'people' ? null : 'people'))}>
+        <Icon name="users"/>
+      </button>
+
+      <button type="button" className="meet-ctl leave" aria-label="Leave meeting" onClick={leave}><Icon name="phone-off"/></button>
+      {room.isHost && (<button type="button" className="btn btn-outline btn-sm danger" onClick={() => ask('end', endAll)}>
+        {confirm === 'end' ? 'Confirm: end for all' : 'End for all'}
+      </button>)}
+    </div>
+
+    {panel && (<SidePanel tab={panel} setTab={setPanel} onClose={() => setPanel(null)} room={room}
+      selfName={selfName} selfId={user.id} media={media} confirm={confirm} ask={ask} panelRef={panelRef}/>)}
+    <CaptionAnnouncer captions={room.captions} names={peerNames} selfId={user.id} showSpeech={showCaps}/>
+  </div>);
 }
 
 ========================================================================
@@ -11039,6 +13543,149 @@ html:has(.landing) { scroll-behavior: smooth; }
 }
 
 ========================================================================
+FILE: frontend-react/src/styles/meet.css
+========================================================================
+/* ═══════════════════════════════════════════════════════════════════════════
+   Meet — video rooms.
+   Uses ONLY the dashboard tokens already defined on .dash (--bg, --card,
+   --surface-solid, --border, --border-soft, --border-hover, --accent,
+   --accent-tint, --on-accent, --red, --amber, --muted, --soft, --text,
+   --radius, --r-card, --r-ctl, --ease) and the existing .btn / .input /
+   .icon-btn / .ui-chip / .segmented / .switch components. No new look.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.meet { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.meet .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.meet .mirror { transform: scaleX(-1); }          /* local preview only; the sent stream is never flipped */
+.meet .btn.danger { color: var(--red-text); border-color: var(--red); }
+.meet .btn.danger:hover:not(:disabled) { background: var(--red-tint); }
+.meet-code { font-weight: 600; letter-spacing: 0.04em; color: var(--text); }
+
+/* ── Lobby ──────────────────────────────────────────────────────────────── */
+.meet-server { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.meet-lobby { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.meet-lobby .meet-privacy { grid-column: 1 / -1; }
+.meet-lead { margin: 4px 0 16px; }
+.meet-facts { display: grid; gap: 8px; padding-left: 18px; margin-top: 8px; color: var(--soft); font-size: 0.9rem; }
+.meet-end-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+/* ── Pre-join ───────────────────────────────────────────────────────────── */
+.meet-prejoin { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 24px; align-items: start; }
+.meet-preview { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; }
+.meet-preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.meet-preview-ctl { position: absolute; left: 0; right: 0; bottom: 12px; display: flex; justify-content: center; gap: 10px; }
+.meet-prejoin-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.meet-prejoin-side .field { margin-bottom: 0; }
+.meet-note { margin-bottom: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.meet-privacy-line { margin-top: 4px; }
+
+/* ── Call layout: top bar / stage / controls, optional side panel ───────── */
+.meet-call {
+  display: grid; gap: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "bar" "banner" "stage" "controls";
+  height: calc(100vh - 64px); height: calc(100dvh - 64px); min-height: 480px;
+}
+.meet-call.with-panel {
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-areas: "bar bar" "banner banner" "stage side" "controls side";
+}
+.meet-bar { grid-area: bar; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-bottom: 12px; }
+.meet-banner { grid-area: banner; display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--amber-tint); color: var(--amber-text); font-size: 0.9rem; }
+
+.meet-stage { grid-area: stage; position: relative; min-height: 0; display: grid; gap: 12px; grid-auto-rows: minmax(0, 1fr); }
+.meet-stage[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
+.meet-stage[data-count="2"], .meet-stage[data-count="3"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.meet-stage[data-count="3"] .meet-tile:last-of-type { grid-column: 1 / -1; justify-self: center; width: calc(50% - 6px); }
+.meet-invite { position: absolute; z-index: 5; top: 10px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; padding: 8px 12px; border-radius: var(--r-ctl); background: var(--surface-solid); border: 1px solid var(--border-hover); font-size: 0.875rem; color: var(--soft); }
+.meet-invite p { margin: 0; }
+
+/* ── Tile ───────────────────────────────────────────────────────────────── */
+.meet-tile { position: relative; min-height: 0; margin: 0; overflow: hidden; background: #000; border: 1px solid var(--border); border-radius: var(--r-card); }
+.meet-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.meet-tile video.contain { object-fit: contain; }
+.meet-tile video.vid-off { visibility: hidden; }          /* keep mounted: remote audio plays through it */
+.meet-tile.is-signing { border-color: var(--amber); }
+.meet-tile-off { position: absolute; inset: 0; display: grid; place-items: center; background: var(--card); }
+.meet-preview .meet-tile-off { background: var(--card); }
+.meet-tile-status { position: absolute; top: 10px; left: 10px; padding: 3px 10px; border-radius: 999px; font-size: 0.8rem; background: rgba(0, 0, 0, 0.65); color: var(--soft); }
+.meet-tile-status.bad { color: var(--red-text); }
+.meet-tile-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.7)); font-size: 0.85rem; color: #fff; }
+.meet-tile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.meet-badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; background: rgba(255, 255, 255, 0.16); }
+.meet-badge.sign { background: var(--amber); color: var(--on-accent); }
+.meet-muted { display: inline-grid; place-items: center; margin-left: auto; width: 24px; height: 24px; border-radius: 50%; background: var(--red); }
+
+/* Captions: speech = dark pill with the speaker's name; sign = amber pill with a hand icon. */
+.meet-caps { position: absolute; left: 8px; right: 8px; bottom: 44px; display: grid; gap: 4px; justify-items: center; pointer-events: none; }
+.meet-caps .cap { max-width: 100%; margin: 0; padding: 4px 10px; border-radius: var(--r-ctl); font-size: 0.95rem; line-height: 1.35; overflow-wrap: anywhere; }
+.meet-caps .cap-speech { background: rgba(0, 0, 0, 0.75); color: #fff; }
+.meet-caps .cap-speech b { color: var(--accent); font-weight: 600; margin-right: 4px; }
+.meet-caps .cap-sign { display: inline-flex; align-items: center; gap: 6px; background: var(--amber); color: var(--on-accent); font-weight: 600; }
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
+.meet-controls { grid-area: controls; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding-top: 14px; }
+.meet-ctl { position: relative; display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--border-hover); background: var(--card); color: var(--text); transition: background-color 0.2s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease); }
+.meet-ctl:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
+.meet-ctl:disabled { opacity: 0.4; cursor: not-allowed; }
+.meet-ctl.on { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+.meet-ctl.off { background: var(--red); border-color: transparent; color: #fff; }
+.meet-ctl.leave { background: var(--red); border-color: transparent; color: #fff; width: 56px; border-radius: 999px; }
+.meet-dot { position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 0.68rem; font-style: normal; font-weight: 700; display: grid; place-items: center; }
+
+.meet-pop-wrap { position: relative; display: inline-flex; }
+.meet-pop { position: absolute; z-index: 30; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%); width: 320px; max-width: calc(100vw - 32px); display: grid; gap: 12px; padding: 14px; background: var(--surface-solid); border: 1px solid var(--border-hover); border-radius: var(--r-card); }
+.meet-pop .field { margin-bottom: 0; }
+.meet-pop .switch-row { justify-content: space-between; width: 100%; color: var(--text); }
+
+/* ── Side panel ─────────────────────────────────────────────────────────── */
+.meet-side { grid-area: side; min-height: 0; margin-left: 16px; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; }
+.meet-side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); }
+.meet-chat-note { padding: 10px 12px 0; margin: 0; }
+.meet-chat { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.meet-msg { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; font-size: 0.9rem; }
+.meet-msg b { font-size: 0.78rem; color: var(--muted); font-weight: 500; }
+.meet-msg .bubble { max-width: 100%; width: fit-content; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: rgba(255, 255, 255, 0.04); overflow-wrap: anywhere; white-space: pre-wrap; }
+.meet-msg.own { align-items: flex-end; }
+.meet-msg.own .bubble { background: var(--accent-tint); border-color: transparent; }
+.meet-side .composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
+.meet-side .composer .input { flex: 1; min-width: 0; }
+.meet-people { list-style: none; margin: 0; padding: 8px; overflow-y: auto; display: grid; gap: 4px; align-content: start; }
+.meet-people li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px; border-radius: var(--r-ctl); }
+.meet-person-name { flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meet-person-actions { display: inline-flex; gap: 6px; width: 100%; justify-content: flex-end; }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 960px) {
+  .meet-prejoin { grid-template-columns: minmax(0, 1fr); }
+  .meet-lobby { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .meet-call { height: calc(100vh - 120px); height: calc(100dvh - 120px); }
+  .meet-call.with-panel { grid-template-columns: minmax(0, 1fr); grid-template-areas: "bar" "banner" "stage" "controls"; }
+  .meet-side { position: fixed; inset: 0; z-index: 50; margin: 0; border-radius: 0; background: var(--surface-solid); }
+  .meet-stage[data-count="2"], .meet-stage[data-count="3"] { grid-template-columns: minmax(0, 1fr); }
+  .meet-stage[data-count="3"] .meet-tile:last-of-type { grid-column: auto; width: auto; }
+  .meet-pop { position: fixed; left: 16px; right: 16px; bottom: 88px; transform: none; width: auto; max-width: none; }
+  .meet-ctl { width: 44px; height: 44px; }
+  .meet-controls { gap: 8px; }
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .meet * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+/* ── Phase 4: sign captions ─────────────────────────────────────────────── */
+.meet-skeleton { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.meet-signdbg { position: absolute; top: 10px; right: 10px; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; background: rgba(0, 0, 0, 0.55); color: var(--soft); font-variant-numeric: tabular-nums; pointer-events: none; }
+
+/* ── Phase 5: accessibility ── */
+.meet-side:focus { outline: none; }          /* focus is moved here programmatically; its controls keep their own rings */
+.meet-people-note { list-style: none; padding: 8px 4px 0; }
+
+========================================================================
 FILE: frontend-react/src/styles/tutor.css
 ========================================================================
 /* AI Tutor — scoped under .dash .tutor. Reuses the dashboard tokens (--card, --border, --accent …). */
@@ -11233,6 +13880,7 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   server: { port: 3000, host: true },
+  test: { environment: 'jsdom', include: ['src/**/*.test.{js,jsx}'] },
   preview: { port: 3000, host: true, allowedHosts: true },
 });
 
@@ -14311,6 +16959,7 @@ function Landing() {
             <nav className="lp-links" aria-label="Primary">
               <a href="#features">Features</a>
               <a href="#how">How it works</a>
+              <a href="https://deluxe-chaja-074488.netlify.app/" target="_blank" rel="noopener noreferrer">Explore</a>
             </nav>
             <div className="lp-actions">
               {user ? (
@@ -15635,6 +18284,62 @@ const nextConfig = {
 export default nextConfig;
 
 ========================================================================
+FILE: ml/export_model.py
+========================================================================
+"""Train a small MLP on the SignFlow landmark dataset and export it as plain JSON
+(weights only) so the browser can run it with ~30 lines of JS (no onnxruntime, no WASM).
+Also evaluates RF vs MLP with a *blocked* split (last 20% of every class, in file order)
+because consecutive webcam frames make a random split leak."""
+import json, sys, numpy as np, pandas as pd, warnings
+warnings.filterwarnings("ignore")
+from sklearn.neural_network import MLPClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+
+CSV = sys.argv[1]; OUT = sys.argv[2]
+df = pd.read_csv(CSV)
+X_raw = df.iloc[:, :-1].values.astype(np.float64); y_raw = df.iloc[:, -1].values
+def norm(r):
+    p = r.reshape(-1, 3).copy(); p -= p[0]; m = np.abs(p).max()
+    if m > 0: p /= m
+    return p.flatten()
+X = np.array([norm(r) for r in X_raw]); le = LabelEncoder(); y = le.fit_transform(y_raw)
+
+def flip(a):  # mirror augmentation: negate x of every landmark
+    b = a.copy(); b[:, 0::3] *= -1; return b
+def jitter(a, rng, s=0.02): return a + rng.normal(0, s, a.shape)
+
+# blocked split
+tr, te = [], []
+for c in range(len(le.classes_)):
+    idx = np.where(y == c)[0]; k = int(len(idx) * 0.8); tr += list(idx[:k]); te += list(idx[k:])
+Xtr, ytr, Xte, yte = X[tr], y[tr], X[te], y[te]
+rng = np.random.default_rng(0)
+def aug(Xa, ya): return (np.vstack([Xa, flip(Xa), jitter(Xa, rng), jitter(flip(Xa), rng)]), np.concatenate([ya]*4))
+
+rf = RandomForestClassifier(100, random_state=42).fit(Xtr, ytr)
+print("blocked-split acc  RF            :", round(rf.score(Xte, yte), 4))
+print("blocked-split acc  RF on mirrored test:", round(rf.score(flip(Xte), yte), 4), "(mirror sensitivity)")
+Xa, ya = aug(Xtr, ytr)
+mlp = MLPClassifier((64, 32), max_iter=400, random_state=1, early_stopping=True).fit(Xa, ya)
+print("blocked-split acc  MLP+augment:", round(mlp.score(Xte, yte), 4))
+print("blocked-split acc  MLP on mirrored test:", round(mlp.score(flip(Xte), yte), 4))
+
+# final model on ALL data (+augmentation)
+Xa, ya = aug(X, y)
+mlp = MLPClassifier((64, 32), max_iter=400, random_state=1, early_stopping=True).fit(Xa, ya)
+W = [w.T.round(5).tolist() for w in mlp.coefs_]   # shape [out][in]
+B = [b.round(5).tolist() for b in mlp.intercepts_]
+json.dump({"labels": list(le.classes_), "layers": [{"w": w, "b": b} for w, b in zip(W, B)],
+           "activation": "relu", "input": 63}, open(OUT, "w"), separators=(",", ":"))
+# parity fixtures for the JS test
+sel = np.random.default_rng(3).choice(len(X), 20, replace=False)
+json.dump({"raw": X_raw[sel].round(6).tolist(), "norm": X[sel].round(6).tolist(),
+           "proba": mlp.predict_proba(X[sel]).round(5).tolist(), "pred": [str(le.classes_[i]) for i in mlp.predict(X[sel])]},
+          open(OUT.replace(".json", ".fixtures.json"), "w"))
+print("final train acc:", round(mlp.score(X, y), 4)); print("classes:", list(le.classes_))
+
+========================================================================
 FILE: render.yaml
 ========================================================================
 services:
@@ -15672,6 +18377,15 @@ services:
         value: https://linguawave-frontend.onrender.com
       - key: ALLOWED_ORIGINS
         value: https://linguawave-frontend.onrender.com
+      # Meet (video rooms). TURN is optional; without it only STUN is offered.
+      - key: MEET_MAX_PEERS
+        value: "3"
+      - key: MEET_TURN_URLS
+        sync: false
+      - key: MEET_TURN_USERNAME
+        sync: false
+      - key: MEET_TURN_CREDENTIAL
+        sync: false
 
   # ─── Frontend: Next.js ───────────────────────────────────────────────────────
   - type: web

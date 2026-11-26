@@ -31,7 +31,8 @@
 14. [Deployment (Render)](#14-deployment-render)
 15. [Troubleshooting](#15-troubleshooting)
 16. [Legacy Files & Cleanup Notes](#16-legacy-files--cleanup-notes)
-17. [License](#17-license)
+17. [Meet (video rooms)](#17-meet-video-rooms)
+18. [License](#18-license)
 
 ---
 
@@ -146,7 +147,8 @@ linguawave/
 │   ├── prisma/                    # ⚠ LEGACY (pre-Firebase PostgreSQL schema + migrations)
 │   ├── tests/
 │   │   ├── auth.test.js           # register / login / Google sign-in / health / 404
-│   │   └── integration.test.js    # frontend⇄backend contract + Socket.IO
+│   │   ├── integration.test.js    # frontend⇄backend contract + Socket.IO
+│   │   └── meet.test.js           # Meet signaling, room cap, host actions, abuse guards
 │   └── src/
 │       ├── server.js              # HTTP server + Socket.IO + bootstrap + graceful shutdown
 │       ├── app.js                 # Express app, middleware, route mounting
@@ -166,6 +168,7 @@ linguawave/
 │       │                          # languages, conversation, phrases
 │       ├── Services/emailService.js   # Brevo: welcome, OTP, verify, reset, password-changed
 │       ├── sockets/socketManager.js   # chat, presence, session & feedback events
+│       ├── sockets/meetSocket.js      # Meet: WebRTC signaling, rooms, host controls
 │       └── utils/                 # jwtHelper, otpHelper, fetchRetry, logger,
 │                                  # username, validation, fileStream (fs + zlib + streams)
 │
@@ -182,7 +185,10 @@ linguawave/
 │
 └── frontend-react/                # React + Vite port (same UI, same CSS, same API calls)
     ├── vite.config.js             # dev & preview on :3000
-    └── src/{pages,components,lib,styles}
+    ├── public/{sign_model.json,hand_landmarker.task}   # on-device sign recognition assets
+    └── src/{pages,components,lib,styles}   # Meet: pages/dashboard/Meet*.jsx, lib/meet/*, styles/meet.css
+
+ml/                                # export_model.py + parity fixtures for the sign model
 ```
 
 ---
@@ -283,6 +289,10 @@ Open <http://localhost:3000>, register an account, and (in dev, with no `BREVO_A
 | `EMAIL_FROM` | – | – | Sender verified in Brevo |
 | `RATE_LIMIT_WINDOW_MS` | – | `900000` | General limiter window |
 | `RATE_LIMIT_MAX` | – | `600` | Requests per window per user/IP |
+| `MEET_MAX_PEERS` | – | `3` | Max people per Meet room (WebRTC mesh: each browser keeps `n-1` connections) |
+| `MEET_MAX_ROOMS` | – | `100` | Max simultaneous Meet rooms on this instance (memory guard) |
+| `MEET_CREATE_LIMIT` / `MEET_CREATE_WINDOW_S` | – | `5` / `600` | Rooms one user may create per window |
+| `MEET_TURN_URLS` / `MEET_TURN_USERNAME` / `MEET_TURN_CREDENTIAL` | – | – | Optional TURN relay (comma-separated URLs). Without all three only STUN is offered |
 | `LOG_LEVEL` | – | `info` | Winston level |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALLBACK_URL` | – | – | Only for the **legacy** Passport strategy (not used by the current Firebase flow) |
 
@@ -309,7 +319,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 ### 7.3 Vite frontend (`frontend-react/.env`)
 
-Same as above with the prefix `VITE_` (`VITE_API_URL`, `VITE_SOCKET_URL`, `VITE_FIREBASE_*`).
+Same as above with the prefix `VITE_` (`VITE_API_URL`, `VITE_SOCKET_URL`, `VITE_FIREBASE_*`). `VITE_SOCKET_URL` defaults to `VITE_API_URL` without `/api/v1`. Meet uses both: REST for `/meet/ice`, Socket.IO for signaling.
 
 ---
 
@@ -503,6 +513,7 @@ Only the last 6 history messages are sent to the model.
 |--------|----------|-------------|
 | GET | `/health` | Liveness probe (used by Render) |
 | GET | `/api` | Endpoint index |
+| GET | `/meet/ice` | ICE servers for WebRTC (auth required): STUN always, TURN if configured |
 
 ---
 
@@ -542,6 +553,18 @@ Connections without a valid token (or for a deleted user) are rejected.
 | `pronunciation:feedback` | `object + timestamp` | Multi-device feedback |
 
 Every socket also auto-joins a private `user:<id>` room for targeted delivery.
+
+**Meet events** (see [§17](#17-meet-video-rooms)):
+
+| Direction | Event | Payload |
+|-----------|-------|---------|
+| → server | `meet:join` (ack) | `{ roomId, create }` → `{ ok, selfId, hostId, peers:[{id,name,userId}], max }` or `{ ok:false, error }` (`invalid-room`, `not-found`, `room-full`, `rate-limited`, `server-busy`) |
+| → server | `meet:signal` | `{ to, data }` where `data` is `{type:'offer'\|'answer', sdp}` or `{type:'candidate', candidate}`; relayed to one peer in the same room |
+| → server | `meet:leave`, `meet:end` | host-only for `end` |
+| → server | `meet:kick`, `meet:mute` | `{ target }` (host only; `target` is a socket id) |
+| ← client | `meet:peer-joined` / `meet:peer-left` | `{ id, name, userId }` / `{ id }` |
+| ← client | `meet:signal` | `{ from, data }` |
+| ← client | `meet:host-changed` / `meet:force-mute` / `meet:kicked` / `meet:ended` | `{ hostId }` / – / – / – |
 
 ---
 
@@ -593,7 +616,10 @@ Tests run with Firebase, models and e-mail **mocked** — no network or credenti
 | Suite | What it covers |
 |-------|----------------|
 | `auth.test.js` | Register validation, duplicate / race-condition `409`, OTP-on-register, login errors, **Google sign-in** (invalid token, non-Google provider, unverified email, new user, account linking, pre-hijack password wipe), `/health`, unknown route `404` |
+| `meet.test.js` | **Meet**: create + join, 4th person gets `room-full`, `not-found` / `invalid-room`, signals reach only the target in the same room, malformed / oversized signals dropped, non-hosts cannot kick / mute / end, host kick, host handover, disconnect cleanup, 300-signals-per-10 s flood guard, per-user room-creation limit, garbage payloads never crash the server |
 | `integration.test.js` | **Frontend ⇄ backend contract**: Gmail dots preserved, readable validation errors, OTP right/wrong + lockout can't be bypassed, pre-auth token can't be used as access token, `/users/me` shape, refresh rotation + grace replay, speech analysis without a key, session create → list, trend & leaderboard include usernames, tutor/phrase fallbacks, CORS preflight (allowed vs unknown origin), password-reset link, **Socket.IO** auth rejection and two-client room messaging |
+
+**Frontend tests** (`frontend-react`, Vitest + jsdom): `npm test` runs the `useMeetRoom` hook tests (signaling order, ICE queueing, data channel, reconnect, host identity), the sign-model **parity test** (JS classifier vs. the Python reference in `ml/sign_model.fixtures.json`, tolerance 0.001), captioner and slow-device-guard unit tests, and a check that the MediaPipe WASM version in `signEngine.js` equals the exact pin in `package.json`.
 
 **Manual smoke test**
 
@@ -629,7 +655,7 @@ curl -X POST http://localhost:5000/api/v1/auth/register \
 
 **Deploying the Vite frontend:** build with `npm install && npm run build`, publish `dist/` as a static site, and add a rewrite `/* → /index.html` (`public/_redirects` and `vercel.json` are included for Netlify/Vercel).
 
-**Cross-site cookies:** the refresh cookie is `httpOnly`, `secure` in production, and sent with `credentials: 'include'`, so the frontend origin **must** be in `ALLOWED_ORIGINS`.
+**Cross-site cookies:** the refresh cookie is `httpOnly`, `secure` in production, and sent with `credentials: 'include'`, so the frontend origin **must** be in `ALLOWED_ORIGINS`. See [§17.5](#175-vercel--render) for the Vercel + Render case.
 
 ---
 
@@ -670,6 +696,82 @@ Also worth tidying: the in-app route comment on `/auth/verify-otp` says OTP is "
 
 ---
 
-## 17. License
+## 17. Meet (video rooms)
+
+A video room inside the logged-in dashboard (`/dashboard/meet`). Up to **3 people** per room, any number of rooms. Besides the usual controls (mic, camera, screen share, chat, participant list, host mute / remove / end for everyone) it has two accessibility features: **live speech captions** and **sign-gesture captions**.
+
+### 17.1 How it works
+
+```mermaid
+flowchart LR
+  A["Browser A"] <-- "WebRTC: audio, video, data channel 'meet'" --> B["Browser B"]
+  A <-- "WebRTC" --> C["Browser C"]
+  B <-- "WebRTC" --> C
+  A -. "Socket.IO signaling only" .-> S["Backend (meetSocket.js)"]
+  B -.-> S
+  C -.-> S
+```
+
+- **Peer-to-peer mesh.** Audio and video never touch the server. With 3 people each browser holds 2 peer connections. The server only relays SDP / ICE over the existing authenticated Socket.IO connection and enforces the room cap.
+- **No glare.** The newcomer always sends the offers to people already in the room; existing members only answer.
+- **Data channel `meet`** carries `{type:"caption", source:"speech", text, final}`, `{type:"caption", source:"sign", text}`, `{type:"chat", text}` and `{type:"state", mic, cam, signing}`. Chat is **not stored** anywhere and disappears with the meeting. Senders' names always come from the server, never from the message.
+- **Room codes** look like `abc-defg-hij`, generated with `crypto.getRandomValues`. A room exists only while someone is in it. Joining a code that does not exist returns `not-found`; only "Start a meeting" creates rooms.
+- **Screen share** swaps the video track with `RTCRtpSender.replaceTrack` (no renegotiation).
+
+### 17.2 Captions
+
+| | Speech captions | Sign captions |
+|--|-----------------|---------------|
+| Engine | Chrome Web Speech API (`useSpeech.js`) | MediaPipe HandLandmarker + a small MLP, both in the browser |
+| Privacy | Chrome sends your audio to **Google's speech service** while it is on | Runs on your device; no video frame leaves the browser |
+| Look | Name + text, white on dark | Amber line with a hand icon, plus a "Signing" badge on the tile |
+| Expiry | After ~6 s of silence | After 4 s of no signing |
+
+Sign mode loads the MediaPipe bundle only when switched on, reads the raw local `<video>`, draws the hand skeleton on a canvas over your tile, and switches itself off (with a toast) if frames keep taking too long (average > 150 ms over 30 frames). A small debug pill on your own tile shows the label, confidence and ms per frame. Sign mode pauses while the camera is off or you are sharing your screen. Chrome desktop is the supported target; other browsers degrade (for example no speech captions, but you can still read others').
+
+### 17.3 Hardening
+
+- Server validates everything: room-code format, boolean `create`, signal type and size (16 KB), target must be in the **same room**, host-only actions, and every listener is wrapped so a malformed payload cannot crash the process.
+- Per-user limits (keyed by user id, so extra tabs or reconnects do not reset them): 5 room creations per 10 minutes, 30 join attempts per minute, 300 signals per 10 s per socket, and at most `MEET_MAX_ROOMS` rooms per instance.
+- A rejected join never ejects you from the room you are already in.
+- Accessibility: labelled, `aria-pressed` toggle buttons, a screen-reader live region that announces each person's caption once it is stable (the visible caption lines are `aria-hidden`), focus moves into the side panel / caption popover on open and back to its button on close or <kbd>Esc</kbd>, visible focus rings, `prefers-reduced-motion` respected.
+
+### 17.4 Retraining the sign model
+
+```bash
+pip install pandas scikit-learn numpy
+python ml/export_model.py <dataset.csv> frontend-react/public/sign_model.json
+```
+
+The CSV has 63 landmark columns (21 × x, y, z) plus a label column. The script trains an MLP with mirror and jitter augmentation, writes the weights as plain JSON, and writes `sign_model.fixtures.json` next to it. Move that file to `ml/` and run `npm test` in `frontend-react`: the parity test fails if the browser classifier disagrees with Python. The labels in `sign_model.json` are the words the app can recognise.
+
+### 17.5 Vercel + Render
+
+Zero-cost setup: frontend on Vercel (static build of `frontend-react`), backend on Render.
+
+1. **Render (backend):** set `FRONTEND_URL` and `ALLOWED_ORIGINS` to the Vercel URL (no trailing slash or path). `ALLOWED_ORIGINS` is an **exact-match** list, so a Vercel preview URL (`*.vercel.app`) must be added explicitly. It applies to REST and Socket.IO.
+2. **Vercel (frontend):** set `VITE_API_URL=https://<your-backend>.onrender.com/api/v1` and `VITE_SOCKET_URL=https://<your-backend>.onrender.com` (plus the `VITE_FIREBASE_*` values). They are baked in at build time, so redeploy after changing them. Keep the SPA rewrite `/* → /index.html`.
+3. Add the Vercel domain to Firebase **Authorized domains**.
+4. **Cold starts:** the free Render plan sleeps when idle, so the Meet lobby pings `/health` and shows "Waking server…". Starting a meeting right after a cold start can take a while.
+5. **TURN (optional):** STUN alone fails for some strict NATs and corporate networks. Set `MEET_TURN_URLS`, `MEET_TURN_USERNAME`, `MEET_TURN_CREDENTIAL` to any TURN provider you choose. Check that provider's current terms and quotas yourself.
+
+**Refresh-cookie check (no behaviour was changed).** `authController.js` sets the refresh cookie with `httpOnly: true`, `secure: isProd`, `sameSite: isProd ? 'none' : 'lax'`, so in production it is already `SameSite=None; Secure`, which is what a cross-domain Vercel + Render deployment needs. The access token is kept in memory on the client, as before. One limit remains: when the frontend (`*.vercel.app`) and backend (`*.onrender.com`) are different sites, the refresh cookie is a **third-party cookie**, and browsers that block those (Safari, Firefox strict mode, Chrome with third-party cookies blocked) will not send it, so those users are asked to sign in again when the 15-minute access token expires. The robust fix is to serve both from one registrable domain (for example `app.example.com` and `api.example.com`), which is a deployment choice rather than a code change.
+
+### 17.6 Manual test checklist
+
+1. Three browser profiles (ideally two networks) log in; A starts a meeting, B and C join with the code or link. Everyone sees and hears everyone.
+2. A fourth profile gets "This meeting is full (3 people maximum)." A typo'd code gets "does not exist"; `abc` shows an invalid-code message.
+3. Mic / camera toggles update the other tiles; the camera light goes off when the camera is off and after leaving.
+4. Screen share shows on the others' screens; the browser's own "Stop sharing" bar ends it and restores the camera.
+5. Chat arrives on both others; reload and confirm it is gone. Only the host sees Mute / Remove / End for all.
+6. Host mutes B (B's mic goes off and B sees a toast). Host removes C (C sees "removed", others see C leave). Host leaves: another person becomes host. End for all: everyone is sent out.
+7. Close a tab mid-call: the others see that person leave within seconds and the room stays usable.
+8. Turn on "Caption my speech" in Chrome: the others see the line within about a second; it clears after ~6 s of silence. Turn sign mode on, make a trained sign: an amber line appears under your tile for everyone, clearing after 4 s.
+9. Put the laptop to sleep or drop Wi-Fi briefly: "Reconnecting…", then the call is rebuilt.
+10. Keyboard only: reach every control with Tab, open Chat (focus lands in the panel), <kbd>Esc</kbd> returns focus to the Chat button. With a screen reader, remote captions are announced.
+
+---
+
+## 18. License
 
 MIT © 2026 LinguaWave — *(the previous README declared MIT; add a `LICENSE` file to the repo root to make it official).*

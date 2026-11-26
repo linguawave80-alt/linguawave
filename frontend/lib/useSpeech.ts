@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type Options = { lang: string; continuous?: boolean; onFinal?: (text: string) => void };
+type Options = { lang: string; continuous?: boolean; onFinal?: (text: string) => void; onInterim?: (text: string) => void };
 
 /** Thin wrapper around the browser Web Speech API. */
-export function useSpeechRecognition({ lang, continuous = false, onFinal }: Options) {
+export function useSpeechRecognition({ lang, continuous = false, onFinal, onInterim }: Options) {
   const [supported, setSupported] = useState(true);
   const [listening, setListening] = useState(false);
   const [text, setText] = useState('');
@@ -14,6 +14,8 @@ export function useSpeechRecognition({ lang, continuous = false, onFinal }: Opti
   const finalRef = useRef('');
   const onFinalRef = useRef(onFinal);
   onFinalRef.current = onFinal;
+  const onInterimRef = useRef(onInterim);
+  onInterimRef.current = onInterim;
 
   useEffect(() => {
     const w = window as any;
@@ -47,6 +49,8 @@ export function useSpeechRecognition({ lang, continuous = false, onFinal }: Opti
           onFinalRef.current?.(t.trim());
         } else interim += t;
       }
+      // Optional: interim-only text of this event (used by Meet to stream live captions).
+      if (interim.trim()) onInterimRef.current?.(interim.trim());
       setText((finalRef.current + ' ' + interim).trim());
     };
     rec.onerror = (e: any) => {

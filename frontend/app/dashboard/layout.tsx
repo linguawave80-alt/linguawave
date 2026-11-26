@@ -15,6 +15,7 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: '/dashboard/tutor', label: 'AI Tutor', icon: 'sparkle' },
   { href: '/dashboard/progress', label: 'Progress', icon: 'bar-chart' },
   { href: '/dashboard/community', label: 'Community', icon: 'users' },
+  { href: '/dashboard/meet', label: 'Meet', icon: 'video' },
   { href: '/dashboard/sessions', label: 'Sessions', icon: 'calendar' },
   { href: '/dashboard/leaderboard', label: 'Leaderboard', icon: 'trophy' },
 ];

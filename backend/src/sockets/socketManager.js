@@ -10,6 +10,7 @@ const User = require('../models/firestore/User');
 const ChatMessage = require('../models/firestore/ChatMessage');
 const logger = require('../utils/logger');
 const { originCallback } = require('../config/cors');
+const { registerMeetHandlers } = require('./meetSocket');
 
 const isValidRoom = (r) => typeof r === 'string' && /^[\w-]{1,40}$/.test(r);
 
@@ -69,6 +70,9 @@ function initSocket(httpServer) {
 
     // Join personal room for targeted messages
     socket.join(`user:${user.id}`);
+
+    // Meet (WebRTC signaling, rooms capped at MEET_MAX_PEERS)
+    registerMeetHandlers(io, socket);
 
     // Broadcast updated online count
     io.emit('users:online', connectedUsers.size);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 /** Thin wrapper around the browser Web Speech API. */
-export function useSpeechRecognition({ lang, continuous = false, onFinal }) {
+export function useSpeechRecognition({ lang, continuous = false, onFinal, onInterim }) {
     const [supported, setSupported] = useState(true);
     const [listening, setListening] = useState(false);
     const [text, setText] = useState('');
@@ -9,6 +9,8 @@ export function useSpeechRecognition({ lang, continuous = false, onFinal }) {
     const finalRef = useRef('');
     const onFinalRef = useRef(onFinal);
     onFinalRef.current = onFinal;
+    const onInterimRef = useRef(onInterim);
+    onInterimRef.current = onInterim;
     useEffect(() => {
         const w = window;
         const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -45,6 +47,9 @@ export function useSpeechRecognition({ lang, continuous = false, onFinal }) {
                 else
                     interim += t;
             }
+            // Optional: interim-only text of this event (used by Meet to stream live captions).
+            if (interim.trim())
+                onInterimRef.current?.(interim.trim());
             setText((finalRef.current + ' ' + interim).trim());
         };
         rec.onerror = (e) => {

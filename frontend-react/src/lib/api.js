@@ -129,4 +129,7 @@ export const api = {
     conversation: {
         chat: (d) => request('POST', '/conversation/chat', d),
     },
+    meet: {
+        ice: () => request('GET', '/meet/ice'),
+    },
 };

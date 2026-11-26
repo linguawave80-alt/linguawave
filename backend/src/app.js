@@ -30,6 +30,7 @@ const adminRoutes = require('./routes/v1/adminRoutes');
 const languageRoutes = require('./routes/v1/languageRoutes');
 const conversationRoutes = require('./routes/v1/conversationRoutes');
 const phraseRoutes = require('./routes/v1/phraseRoutes');
+const meetRoutes = require('./routes/v1/meetRoutes');
 
 
 // ✅ CREATE APP FIRST
@@ -98,6 +99,7 @@ app.use(`${API_V1}/admin`, adminRoutes);
 app.use(`${API_V1}/languages`, languageRoutes);
 app.use(`${API_V1}/conversation`, conversationRoutes);
 app.use(`${API_V1}/phrases`, phraseRoutes);
+app.use(`${API_V1}/meet`, meetRoutes);
 
 // ─── API Docs ────────────────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
@@ -116,7 +118,8 @@ app.get('/api', (req, res) => {
       'GET  /api/v1/chat/messages',
       'GET  /api/v1/phrases/daily',
       'GET  /api/v1/phrases/random',
-      'POST /api/v1/conversation/chat'
+      'POST /api/v1/conversation/chat',
+      'GET  /api/v1/meet/ice'
     ],
   });
 });

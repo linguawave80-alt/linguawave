@@ -1912,3 +1912,10 @@ Caused by: Error
 2026-11-18 15:33:07 [info]: ✅ Server ready on 5001
 2026-11-18 16:06:06 [info]: 
 SIGINT received. Graceful shutdown initiated...
+2026-11-26 14:47:20 [info]: Socket.IO initialized
+2026-11-26 14:47:27 [info]: Firebase Firestore connected
+2026-11-26 14:47:27 [info]: ✅ Firebase Firestore connected
+2026-11-26 14:47:27 [info]: 🚀 LinguaWave server running on port 5001
+2026-11-26 14:47:27 [info]: 📡 Environment: development
+2026-11-26 14:47:27 [info]: 🔗 API Base: http://localhost:5001/api/v1
+2026-11-26 14:47:27 [info]: ✅ Server ready on 5001

@@ -37,10 +37,12 @@ app/
     tutor/                  AI conversation partner
     progress/               accuracy charts
     community/              Socket.IO chat rooms
+    meet/                   video meetings: lobby (page.tsx) + room/page.tsx (?id=abc-defg-hij)
     sessions/               practice history
     leaderboard/
-components/                 AuthModal, charts, Logo
+components/                 AuthModal, charts, Logo, VideoTile
 lib/                        api client, auth context, toast, speech hook, config
+lib/meet/                   WebRTC room hook, local media, on-device sign captions
 ```
 
 ## Notes
@@ -55,3 +57,20 @@ lib/                        api client, auth context, toast, speech hook, config
   `ALLOWED_ORIGINS` (localhost:3000 is already allowed in dev).
 - Speech recognition uses the browser Web Speech API (Chrome/Edge/Android). Unsupported
   browsers (e.g. iOS Safari) get a typed-input fallback on the Practice page.
+
+## Meet (video rooms)
+
+Ported from `frontend-react/`. Same backend contract (`/meet/ice` + the `meet:*` Socket.IO events),
+same CSS (`app/dashboard/meet/meet.css` is the React `meet.css` unchanged).
+
+- **Route:** `next.config.mjs` uses `output: "export"`, which cannot pre-render a dynamic `[roomId]`
+  segment for random codes, so the room lives at `/dashboard/meet/room?id=abc-defg-hij`
+  (wrapped in `<Suspense>` because it reads `useSearchParams`). `parseRoomInput` also accepts the
+  React-style `/dashboard/meet/abc-defg-hij` links. Whether *you* created the room is kept in
+  `sessionStorage`, so a shared link never carries the "create" flag.
+- **Dependency:** `npm i socket.io-client` (already used by Community) and
+  `npm i --save-exact @mediapipe/tasks-vision@0.10.14` (exact pin: it must equal `WASM_BASE` in `lib/meet/signEngine.ts`).
+- **Assets:** copy `frontend-react/public/sign_model.json` and `frontend-react/public/hand_landmarker.task`
+  into `frontend/public/` (sign captions load them on demand; the rest of Meet works without them).
+- **Not ported:** the Vitest suites (`*.test.js`). This app has no test runner; the logic modules are
+  line-for-line the same as the React ones, so the React tests still cover them.

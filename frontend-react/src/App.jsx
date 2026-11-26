@@ -9,6 +9,8 @@ import Progress from '@/pages/dashboard/Progress';
 import Community from '@/pages/dashboard/Community';
 import Sessions from '@/pages/dashboard/Sessions';
 import Leaderboard from '@/pages/dashboard/Leaderboard';
+import Meet from '@/pages/dashboard/Meet';
+import MeetRoom from '@/pages/dashboard/MeetRoom';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -30,6 +32,8 @@ export default function App() {
           <Route path="community" element={<Community />} />
           <Route path="sessions" element={<Sessions />} />
           <Route path="leaderboard" element={<Leaderboard />} />
+          <Route path="meet" element={<Meet />} />
+          <Route path="meet/:roomId" element={<MeetRoom />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
