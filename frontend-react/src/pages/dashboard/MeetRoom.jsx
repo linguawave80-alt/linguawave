@@ -285,6 +285,17 @@ export default function MeetRoom() {
       lastInterim.current = now;
       roomRef.current?.sendCaption('speech', t, false);
     },
+    onError: (code) => {                                                        // real reason instead of silent failure
+      const msg = ({
+        'not-allowed': 'Speech captions blocked: allow the microphone for this site (needs https).',
+        'service-not-allowed': 'Speech captions blocked: allow the microphone for this site (needs https).',
+        'network': "Can't reach Chrome's speech service. Brave, a VPN or a blocked network causes this.",
+        'audio-capture': 'No microphone found, or another app is using it.',
+        'language-not-supported': 'That language is not supported for captions.',
+      })[code] || 'Speech captions stopped. The speech service may be unavailable.';
+      toast(msg, 'error');
+      setSpeechOn(false);
+    },
   });
 
   // Chrome's recognizer opens its OWN mic capture, so muting the WebRTC track would not stop it.
@@ -292,22 +303,12 @@ export default function MeetRoom() {
   const wantSpeech = speechOn && joined && media.mic && hasAudio;
   const wantRef = useRef(false);
   wantRef.current = wantSpeech;
-  const wasListening = useRef(false);
   useEffect(() => {
     if (wantSpeech) speech.start();
     else speech.stop();
     return () => speech.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantSpeech, speechLang]);
-  useEffect(() => {
-    if (speech.listening) { wasListening.current = true; return; }
-    if (wasListening.current && wantRef.current) {                              // stopped by itself: service error / permission
-      toast('Speech captions stopped. The speech service may be unavailable.', 'error');
-      setSpeechOn(false);
-    }
-    wasListening.current = false;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speech.listening]);
 
   /* ── sign captions (Phase 4) ──────────────────────────────────────────── */
   const localVideoRef = useRef(null);
@@ -498,3 +499,4 @@ export default function MeetRoom() {
     <CaptionAnnouncer captions={room.captions} names={peerNames} selfId={user.id} showSpeech={showCaps}/>
   </div>);
 }
+

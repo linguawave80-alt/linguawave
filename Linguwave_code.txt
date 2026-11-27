@@ -1,14 +1,14 @@
 ========================================================================
 COMBINED CODE FILE
-Generated : 2026-11-26T09:12:15.619Z
+Generated : 2026-11-27T11:52:36.660Z
 Root      : /Users/paras/Projects/02_Personal/Linguwave
-Files     : 146
+Files     : 159
 ========================================================================
 
 ========================================================================
 FILE: README.md
 ========================================================================
-# 🌊 LinguaWave — AI-Powered Language Learning Platform
+# 🌊 LinguaWave
 
 > Speak a phrase, get instant word-by-word pronunciation feedback, practise with an AI tutor, track your progress and chat with other learners in real time.
 
@@ -13940,10 +13940,12 @@ app/
     tutor/                  AI conversation partner
     progress/               accuracy charts
     community/              Socket.IO chat rooms
+    meet/                   video meetings: lobby (page.tsx) + room/page.tsx (?id=abc-defg-hij)
     sessions/               practice history
     leaderboard/
-components/                 AuthModal, charts, Logo
+components/                 AuthModal, charts, Logo, VideoTile
 lib/                        api client, auth context, toast, speech hook, config
+lib/meet/                   WebRTC room hook, local media, on-device sign captions
 ```
 
 ## Notes
@@ -13958,6 +13960,23 @@ lib/                        api client, auth context, toast, speech hook, config
   `ALLOWED_ORIGINS` (localhost:3000 is already allowed in dev).
 - Speech recognition uses the browser Web Speech API (Chrome/Edge/Android). Unsupported
   browsers (e.g. iOS Safari) get a typed-input fallback on the Practice page.
+
+## Meet (video rooms)
+
+Ported from `frontend-react/`. Same backend contract (`/meet/ice` + the `meet:*` Socket.IO events),
+same CSS (`app/dashboard/meet/meet.css` is the React `meet.css` unchanged).
+
+- **Route:** `next.config.mjs` uses `output: "export"`, which cannot pre-render a dynamic `[roomId]`
+  segment for random codes, so the room lives at `/dashboard/meet/room?id=abc-defg-hij`
+  (wrapped in `<Suspense>` because it reads `useSearchParams`). `parseRoomInput` also accepts the
+  React-style `/dashboard/meet/abc-defg-hij` links. Whether *you* created the room is kept in
+  `sessionStorage`, so a shared link never carries the "create" flag.
+- **Dependency:** `npm i socket.io-client` (already used by Community) and
+  `npm i --save-exact @mediapipe/tasks-vision@0.10.14` (exact pin: it must equal `WASM_BASE` in `lib/meet/signEngine.ts`).
+- **Assets:** copy `frontend-react/public/sign_model.json` and `frontend-react/public/hand_landmarker.task`
+  into `frontend/public/` (sign captions load them on demand; the rest of Meet works without them).
+- **Not ported:** the Vitest suites (`*.test.js`). This app has no test runner; the logic modules are
+  line-for-line the same as the React ones, so the React tests still cover them.
 
 ========================================================================
 FILE: frontend/app/dashboard/community/page.tsx
@@ -14679,6 +14698,7 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: '/dashboard/tutor', label: 'AI Tutor', icon: 'sparkle' },
   { href: '/dashboard/progress', label: 'Progress', icon: 'bar-chart' },
   { href: '/dashboard/community', label: 'Community', icon: 'users' },
+  { href: '/dashboard/meet', label: 'Meet', icon: 'video' },
   { href: '/dashboard/sessions', label: 'Sessions', icon: 'calendar' },
   { href: '/dashboard/leaderboard', label: 'Leaderboard', icon: 'trophy' },
 ];
@@ -14813,6 +14833,800 @@ export default function LeaderboardPage() {
       </Card>
     </>
   );
+}
+
+========================================================================
+FILE: frontend/app/dashboard/meet/meet.css
+========================================================================
+/* ═══════════════════════════════════════════════════════════════════════════
+   Meet — video rooms.
+   Uses ONLY the dashboard tokens already defined on .dash (--bg, --card,
+   --surface-solid, --border, --border-soft, --border-hover, --accent,
+   --accent-tint, --on-accent, --red, --amber, --muted, --soft, --text,
+   --radius, --r-card, --r-ctl, --ease) and the existing .btn / .input /
+   .icon-btn / .ui-chip / .segmented / .switch components. No new look.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.meet { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.meet .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.meet .mirror { transform: scaleX(-1); }          /* local preview only; the sent stream is never flipped */
+.meet .btn.danger { color: var(--red-text); border-color: var(--red); }
+.meet .btn.danger:hover:not(:disabled) { background: var(--red-tint); }
+.meet-code { font-weight: 600; letter-spacing: 0.04em; color: var(--text); }
+
+/* ── Lobby ──────────────────────────────────────────────────────────────── */
+.meet-server { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.meet-lobby { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.meet-lobby .meet-privacy { grid-column: 1 / -1; }
+.meet-lead { margin: 4px 0 16px; }
+.meet-facts { display: grid; gap: 8px; padding-left: 18px; margin-top: 8px; color: var(--soft); font-size: 0.9rem; }
+.meet-end-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+/* ── Pre-join ───────────────────────────────────────────────────────────── */
+.meet-prejoin { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 24px; align-items: start; }
+.meet-preview { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; }
+.meet-preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.meet-preview-ctl { position: absolute; left: 0; right: 0; bottom: 12px; display: flex; justify-content: center; gap: 10px; }
+.meet-prejoin-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.meet-prejoin-side .field { margin-bottom: 0; }
+.meet-note { margin-bottom: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.meet-privacy-line { margin-top: 4px; }
+
+/* ── Call layout: top bar / stage / controls, optional side panel ───────── */
+.meet-call {
+  display: grid; gap: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "bar" "banner" "stage" "controls";
+  height: calc(100vh - 64px); height: calc(100dvh - 64px); min-height: 480px;
+}
+.meet-call.with-panel {
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-areas: "bar bar" "banner banner" "stage side" "controls side";
+}
+.meet-bar { grid-area: bar; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-bottom: 12px; }
+.meet-banner { grid-area: banner; display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--amber-tint); color: var(--amber-text); font-size: 0.9rem; }
+
+.meet-stage { grid-area: stage; position: relative; min-height: 0; display: grid; gap: 12px; grid-auto-rows: minmax(0, 1fr); }
+.meet-stage[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
+.meet-stage[data-count="2"], .meet-stage[data-count="3"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.meet-stage[data-count="3"] .meet-tile:last-of-type { grid-column: 1 / -1; justify-self: center; width: calc(50% - 6px); }
+.meet-invite { position: absolute; z-index: 5; top: 10px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; padding: 8px 12px; border-radius: var(--r-ctl); background: var(--surface-solid); border: 1px solid var(--border-hover); font-size: 0.875rem; color: var(--soft); }
+.meet-invite p { margin: 0; }
+
+/* ── Tile ───────────────────────────────────────────────────────────────── */
+.meet-tile { position: relative; min-height: 0; margin: 0; overflow: hidden; background: #000; border: 1px solid var(--border); border-radius: var(--r-card); }
+.meet-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.meet-tile video.contain { object-fit: contain; }
+.meet-tile video.vid-off { visibility: hidden; }          /* keep mounted: remote audio plays through it */
+.meet-tile.is-signing { border-color: var(--amber); }
+.meet-tile-off { position: absolute; inset: 0; display: grid; place-items: center; background: var(--card); }
+.meet-preview .meet-tile-off { background: var(--card); }
+.meet-tile-status { position: absolute; top: 10px; left: 10px; padding: 3px 10px; border-radius: 999px; font-size: 0.8rem; background: rgba(0, 0, 0, 0.65); color: var(--soft); }
+.meet-tile-status.bad { color: var(--red-text); }
+.meet-tile-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.7)); font-size: 0.85rem; color: #fff; }
+.meet-tile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.meet-badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; background: rgba(255, 255, 255, 0.16); }
+.meet-badge.sign { background: var(--amber); color: var(--on-accent); }
+.meet-muted { display: inline-grid; place-items: center; margin-left: auto; width: 24px; height: 24px; border-radius: 50%; background: var(--red); }
+
+/* Captions: speech = dark pill with the speaker's name; sign = amber pill with a hand icon. */
+.meet-caps { position: absolute; left: 8px; right: 8px; bottom: 44px; display: grid; gap: 4px; justify-items: center; pointer-events: none; }
+.meet-caps .cap { max-width: 100%; margin: 0; padding: 4px 10px; border-radius: var(--r-ctl); font-size: 0.95rem; line-height: 1.35; overflow-wrap: anywhere; }
+.meet-caps .cap-speech { background: rgba(0, 0, 0, 0.75); color: #fff; }
+.meet-caps .cap-speech b { color: var(--accent); font-weight: 600; margin-right: 4px; }
+.meet-caps .cap-sign { display: inline-flex; align-items: center; gap: 6px; background: var(--amber); color: var(--on-accent); font-weight: 600; }
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
+.meet-controls { grid-area: controls; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding-top: 14px; }
+.meet-ctl { position: relative; display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--border-hover); background: var(--card); color: var(--text); transition: background-color 0.2s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease); }
+.meet-ctl:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
+.meet-ctl:disabled { opacity: 0.4; cursor: not-allowed; }
+.meet-ctl.on { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+.meet-ctl.off { background: var(--red); border-color: transparent; color: #fff; }
+.meet-ctl.leave { background: var(--red); border-color: transparent; color: #fff; width: 56px; border-radius: 999px; }
+.meet-dot { position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 0.68rem; font-style: normal; font-weight: 700; display: grid; place-items: center; }
+
+.meet-pop-wrap { position: relative; display: inline-flex; }
+.meet-pop { position: absolute; z-index: 30; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%); width: 320px; max-width: calc(100vw - 32px); display: grid; gap: 12px; padding: 14px; background: var(--surface-solid); border: 1px solid var(--border-hover); border-radius: var(--r-card); }
+.meet-pop .field { margin-bottom: 0; }
+.meet-pop .switch-row { justify-content: space-between; width: 100%; color: var(--text); }
+
+/* ── Side panel ─────────────────────────────────────────────────────────── */
+.meet-side { grid-area: side; min-height: 0; margin-left: 16px; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; }
+.meet-side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); }
+.meet-chat-note { padding: 10px 12px 0; margin: 0; }
+.meet-chat { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.meet-msg { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; font-size: 0.9rem; }
+.meet-msg b { font-size: 0.78rem; color: var(--muted); font-weight: 500; }
+.meet-msg .bubble { max-width: 100%; width: fit-content; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: rgba(255, 255, 255, 0.04); overflow-wrap: anywhere; white-space: pre-wrap; }
+.meet-msg.own { align-items: flex-end; }
+.meet-msg.own .bubble { background: var(--accent-tint); border-color: transparent; }
+.meet-side .composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
+.meet-side .composer .input { flex: 1; min-width: 0; }
+.meet-people { list-style: none; margin: 0; padding: 8px; overflow-y: auto; display: grid; gap: 4px; align-content: start; }
+.meet-people li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px; border-radius: var(--r-ctl); }
+.meet-person-name { flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meet-person-actions { display: inline-flex; gap: 6px; width: 100%; justify-content: flex-end; }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 960px) {
+  .meet-prejoin { grid-template-columns: minmax(0, 1fr); }
+  .meet-lobby { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .meet-call { height: calc(100vh - 120px); height: calc(100dvh - 120px); }
+  .meet-call.with-panel { grid-template-columns: minmax(0, 1fr); grid-template-areas: "bar" "banner" "stage" "controls"; }
+  .meet-side { position: fixed; inset: 0; z-index: 50; margin: 0; border-radius: 0; background: var(--surface-solid); }
+  .meet-stage[data-count="2"], .meet-stage[data-count="3"] { grid-template-columns: minmax(0, 1fr); }
+  .meet-stage[data-count="3"] .meet-tile:last-of-type { grid-column: auto; width: auto; }
+  .meet-pop { position: fixed; left: 16px; right: 16px; bottom: 88px; transform: none; width: auto; max-width: none; }
+  .meet-ctl { width: 44px; height: 44px; }
+  .meet-controls { gap: 8px; }
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .meet * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+/* ── Phase 4: sign captions ─────────────────────────────────────────────── */
+.meet-skeleton { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.meet-signdbg { position: absolute; top: 10px; right: 10px; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; background: rgba(0, 0, 0, 0.55); color: var(--soft); font-variant-numeric: tabular-nums; pointer-events: none; }
+
+/* ── Phase 5: accessibility ── */
+.meet-side:focus { outline: none; }          /* focus is moved here programmatically; its controls keep their own rings */
+.meet-people-note { list-style: none; padding: 8px 4px 0; }
+
+========================================================================
+FILE: frontend/app/dashboard/meet/page.tsx
+========================================================================
+'use client';
+
+import './meet.css';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Icon from '@/components/Icon';
+import { Card, CardTitle, Chip, PageHeader } from '@/components/ui';
+import type { Tone } from '@/components/ui';
+import { SOCKET_URL } from '@/lib/config';
+import { generateRoomId, markCreate, parseRoomInput, roomPath } from '@/lib/meet/roomId';
+
+type ServerState = 'checking' | 'waking' | 'ready' | 'down';
+
+const SERVER_CHIP: Record<ServerState, { tone: Tone; text: string }> = {
+  checking: { tone: 'neutral', text: 'Checking server…' },
+  waking: { tone: 'amber', text: 'Waking server… this can take up to a minute' },
+  ready: { tone: 'green', text: 'Server ready' },
+  down: { tone: 'red', text: 'Server unreachable' },
+};
+
+/** The free Render tier sleeps when idle; ping /health so the first call is not a long, silent wait. */
+function useServerStatus(): [ServerState, () => void] {
+  const [status, setStatus] = useState<ServerState>('checking');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    setStatus('checking');
+    const ac = new AbortController();
+    const slow = setTimeout(() => setStatus((s) => (s === 'checking' ? 'waking' : s)), 2500);
+    const giveUp = setTimeout(() => ac.abort(), 90_000);
+    fetch(`${SOCKET_URL}/health`, { signal: ac.signal, cache: 'no-store' })
+      .then((r) => setStatus(r.ok ? 'ready' : 'down'))
+      .catch(() => setStatus('down'))
+      .finally(() => { clearTimeout(slow); clearTimeout(giveUp); });
+    return () => { ac.abort(); clearTimeout(slow); clearTimeout(giveUp); };
+  }, [attempt]);
+  return [status, () => setAttempt((n) => n + 1)];
+}
+
+export default function MeetLobbyPage() {
+  const router = useRouter();
+  const [server, recheck] = useServerStatus();
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+
+  const start = () => {
+    const id = generateRoomId();
+    markCreate(id);
+    router.push(roomPath(id));
+  };
+
+  const join = (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = parseRoomInput(code);
+    if (!id) { setError('Enter a code like abc-defg-hij, or paste the meeting link.'); return; }
+    router.push(roomPath(id));
+  };
+
+  const chip = SERVER_CHIP[server];
+
+  return (
+    <div className="meet">
+      <PageHeader
+        title="Meet"
+        subtitle="Video meetings for up to 3 people, with live captions and sign-gesture captions."
+        actions={(
+          <span className="meet-server">
+            <Chip tone={chip.tone} dot>{chip.text}</Chip>
+            {server === 'down' && <button type="button" className="btn btn-outline btn-sm" onClick={recheck}>Retry</button>}
+          </span>
+        )}
+      />
+
+      <div className="meet-lobby">
+        <Card>
+          <CardTitle icon="video">Start a meeting</CardTitle>
+          <p className="muted small meet-lead">You get a code to share. Up to 3 people can be in a meeting at once.</p>
+          <button type="button" className="btn btn-primary" onClick={start}>
+            <Icon name="plus" size={18} /> New meeting
+          </button>
+        </Card>
+
+        <Card>
+          <CardTitle icon="users">Join with a code</CardTitle>
+          <form onSubmit={join} noValidate>
+            <div className="field">
+              <label htmlFor="meet-code">Meeting code or link</label>
+              <input
+                id="meet-code"
+                className="input"
+                value={code}
+                placeholder="abc-defg-hij"
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={!!error}
+                aria-describedby={error ? 'meet-code-err' : undefined}
+                onChange={(e) => { setCode(e.target.value); setError(''); }}
+              />
+              {error && <span id="meet-code-err" className="field-error" role="alert">{error}</span>}
+            </div>
+            <button type="submit" className="btn btn-outline" disabled={!code.trim()}>
+              Join <Icon name="arrow-right" size={18} />
+            </button>
+          </form>
+        </Card>
+
+        <Card className="meet-privacy">
+          <CardTitle icon="globe">How your data is handled</CardTitle>
+          <ul className="meet-facts">
+            <li>Video and audio go directly between participants (peer-to-peer). They are never sent to or stored on our server.</li>
+            <li>Sign-gesture recognition runs on your device. No video frames leave your browser.</li>
+            <li>Speech captions use Chrome’s speech service, which sends your audio to Google.</li>
+            <li>Chat messages are not saved and disappear when the meeting ends.</li>
+            <li>A meeting exists only while someone is in it, so share the link after you have joined.</li>
+          </ul>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+========================================================================
+FILE: frontend/app/dashboard/meet/room/page.tsx
+========================================================================
+'use client';
+
+import '../meet.css';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Icon from '@/components/Icon';
+import VideoTile from '@/components/VideoTile';
+import { Avatar, Chip, EmptyState, SegmentedControl, Skeleton, Switch } from '@/components/ui';
+import { LANGUAGES } from '@/lib/config';
+import { useAuth } from '@/lib/auth-context';
+import { useToast } from '@/lib/toast';
+import { useSpeechRecognition } from '@/lib/useSpeech';
+import useLocalMedia, { MEDIA_ERRORS } from '@/lib/meet/useLocalMedia';
+import type { LocalMedia } from '@/lib/meet/useLocalMedia';
+import useMeetRoom from '@/lib/meet/useMeetRoom';
+import type { MeetRoom as Room, PeerId } from '@/lib/meet/useMeetRoom';
+import useSignCaptions from '@/lib/meet/useSignCaptions';
+import { ROOM_ID_RE, roomLink, wasCreated } from '@/lib/meet/roomId';
+
+const INTERIM_MIN_GAP_MS = 330;   // ≈3 interim speech captions per second at most
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Pre-join screen: camera preview, toggles, device pickers, permission help
+   ════════════════════════════════════════════════════════════════════════════ */
+function PreJoin({ media, roomId, creating, onJoin, onCopy }: {
+  media: LocalMedia; roomId: string; creating: boolean; onJoin: () => void; onCopy: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const hasAudio = !!media.stream?.getAudioTracks().length;
+  const hasVideo = !!media.stream?.getVideoTracks().length;
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = media.stream || null;
+  }, [media.stream]);
+
+  const label = (d: MediaDeviceInfo, i: number, kind: string) => d.label || `${kind} ${i + 1}`;
+  const blocking = media.error && media.error !== 'notfound';
+
+  return (<div className="meet-prejoin">
+    <div className="meet-preview">
+      <video ref={videoRef} autoPlay playsInline muted className="mirror" aria-label="Your camera preview"/>
+      {(!hasVideo || !media.cam) && (<div className="meet-tile-off"><Avatar name="You" size={72}/></div>)}
+      <div className="meet-preview-ctl">
+        <button type="button" className={`meet-ctl ${media.mic && hasAudio ? '' : 'off'}`} disabled={!hasAudio}
+          aria-pressed={!media.mic} aria-label={media.mic ? 'Turn microphone off' : 'Turn microphone on'}
+          onClick={() => media.setMic(!media.mic)}>
+          <Icon name={media.mic && hasAudio ? 'mic' : 'mic-off'}/>
+        </button>
+        <button type="button" className={`meet-ctl ${media.cam && hasVideo ? '' : 'off'}`} disabled={!hasVideo}
+          aria-pressed={!media.cam} aria-label={media.cam ? 'Turn camera off' : 'Turn camera on'}
+          onClick={() => media.setCam(!media.cam)}>
+          <Icon name={media.cam && hasVideo ? 'video' : 'video-off'}/>
+        </button>
+      </div>
+    </div>
+
+    <div className="meet-prejoin-side">
+      <h2>{creating ? 'Ready to start?' : 'Ready to join?'}</h2>
+      <p className="muted small">Meeting code: <b className="meet-code">{roomId}</b>{' '}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCopy} aria-label="Copy meeting link">
+          <Icon name="copy" size={16}/> Copy link
+        </button>
+      </p>
+
+      {media.error && (<div className={`form-msg ${blocking ? 'error' : ''} meet-note`} role="alert">
+        {MEDIA_ERRORS[media.error]}
+        {media.error !== 'notfound' && media.error !== 'unsupported' && (
+          <> <button type="button" className="btn btn-outline btn-sm" onClick={() => media.start()}>Try again</button></>)}
+      </div>)}
+
+      {(media.devices.audio.length > 0 || media.devices.video.length > 0) && (<>
+        <div className="field">
+          <label htmlFor="meet-mic">Microphone</label>
+          <select id="meet-mic" className="input" value={media.ids.audio}
+            onChange={(e) => media.start({ audio: e.target.value })} disabled={!media.devices.audio.length}>
+            {media.devices.audio.map((d, i) => <option key={d.deviceId || i} value={d.deviceId}>{label(d, i, 'Microphone')}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="meet-cam">Camera</label>
+          <select id="meet-cam" className="input" value={media.ids.video}
+            onChange={(e) => media.start({ video: e.target.value })} disabled={!media.devices.video.length}>
+            {media.devices.video.map((d, i) => <option key={d.deviceId || i} value={d.deviceId}>{label(d, i, 'Camera')}</option>)}
+          </select>
+        </div>
+      </>)}
+
+      <button type="button" className="btn btn-primary btn-lg" onClick={onJoin}>
+        {!hasAudio && !hasVideo ? 'Join without camera or mic' : creating ? 'Start meeting' : 'Join now'}
+      </button>
+      <p className="muted small meet-privacy-line">
+        Video and audio go directly between participants. Sign recognition runs on your device. Speech captions, if you turn them on, use Google’s speech service.
+      </p>
+    </div>
+  </div>);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Side panel: chat + participants
+   ════════════════════════════════════════════════════════════════════════════ */
+function SidePanel({ tab, setTab, onClose, room, selfName, media, confirm, ask, panelRef }: {
+  tab: 'chat' | 'people'; setTab: (t: 'chat' | 'people') => void; onClose: () => void; room: Room; selfName: string;
+  media: LocalMedia; confirm: string | null; ask: (key: string, action: () => void) => void; panelRef: RefObject<HTMLElement | null>;
+}) {
+  const [text, setText] = useState('');
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (tab === 'chat') endRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+  }, [room.chat, tab]);
+
+  const send = (e: React.FormEvent) => { e.preventDefault(); room.sendChat(text); setText(''); };
+
+  return (<aside className="meet-side" ref={panelRef as RefObject<HTMLElement>} tabIndex={-1} aria-label="Meeting side panel">
+    <div className="meet-side-head">
+      <SegmentedControl<'chat' | 'people'> ariaLabel="Panel" value={tab} onChange={setTab}
+        options={[{ value: 'chat', label: 'Chat' }, { value: 'people', label: `People (${room.peers.length + 1})` }]}/>
+      <button type="button" className="icon-btn" onClick={onClose} aria-label="Close panel"><Icon name="close" size={18}/></button>
+    </div>
+
+    {tab === 'chat' ? (<>
+      <p className="meet-chat-note muted small">Messages go directly to the other people here. They are not saved and disappear when the meeting ends.</p>
+      <div className="meet-chat" role="log" aria-live="polite" aria-label="Meeting chat">
+        {room.chat.length === 0 ? <EmptyState icon="message" message="No messages yet."/> : room.chat.map((m) => (
+          <div key={m.id} className={`meet-msg ${m.own ? 'own' : ''}`}>
+            {!m.own && <b>{m.name}</b>}
+            <div className="bubble">{m.text}</div>
+          </div>))}
+        <div ref={endRef}/>
+      </div>
+      <form className="composer" onSubmit={send}>
+        <input className="input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Message everyone…" maxLength={500} aria-label="Chat message"/>
+        <button type="submit" className="icon-btn primary" aria-label="Send message" disabled={!text.trim()}><Icon name="send" size={20}/></button>
+      </form>
+    </>) : (<ul className="meet-people" aria-label="Participants">
+      <li>
+        <Avatar name={selfName} size={32}/>
+        <span className="meet-person-name">{selfName} (You)</span>
+        {room.isHost && <Chip tone="teal">Host</Chip>}
+        {!media.mic && <><Icon name="mic-off" size={16}/><span className="sr-only">Muted</span></>}
+      </li>
+      {room.peers.map((p) => (<li key={p.id}>
+        <Avatar name={p.name} size={32}/>
+        <span className="meet-person-name">{p.name}</span>
+        {room.hostId === p.id && <Chip tone="teal">Host</Chip>}
+        {p.signing && <Chip tone="amber" icon="hand">Signing</Chip>}
+        {!p.mic && <><Icon name="mic-off" size={16}/><span className="sr-only">Muted</span></>}
+        {room.isHost && (<span className="meet-person-actions">
+          <button type="button" className="btn btn-outline btn-sm" disabled={!p.mic} onClick={() => room.mute(p.id)}>Mute</button>
+          <button type="button" className="btn btn-outline btn-sm danger" onClick={() => ask(`kick:${p.id}`, () => room.kick(p.id))}>
+            {confirm === `kick:${p.id}` ? 'Confirm?' : 'Remove'}
+          </button>
+        </span>)}
+      </li>))}
+      <li className="meet-people-note muted small">Video and audio are peer-to-peer. Sign recognition runs on your device. Speech captions use Google’s speech service.</li>
+    </ul>)}
+  </aside>);
+}
+
+/* Screen-reader captions. The visible caption lines flicker (interim speech, running sign words), so they are
+   aria-hidden; this region announces each person's line once it has been stable for ~1.2 s. */
+function CaptionAnnouncer({ captions, names, selfId, showSpeech }: {
+  captions: Room['captions']; names: Record<string, string>; selfId: string; showSpeech: boolean;
+}) {
+  const [msg, setMsg] = useState('');
+  const seen = useRef<Record<string, string>>({});
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  useEffect(() => {
+    const live = new Set();
+    for (const [id, per] of Object.entries(captions)) {
+      if (id === selfId) continue;                                            // you do not need your own captions read back
+      for (const src of ['speech', 'sign'] as const) {
+        const t = per[src]?.text;
+        if (!t || (src === 'speech' && !showSpeech)) continue;
+        const key = `${id}:${src}`; live.add(key);
+        if (seen.current[key] === t) continue;
+        seen.current[key] = t;
+        clearTimeout(timers.current[key]);
+        timers.current[key] = setTimeout(() => setMsg(`${names[id] || 'Someone'} ${src === 'sign' ? 'signs' : 'says'}: ${t}`), 1200);
+      }
+    }
+    for (const k of Object.keys(seen.current)) if (!live.has(k)) delete seen.current[k];   // line expired: next one is new
+  }, [captions, names, selfId, showSpeech]);
+  useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), []);
+  return <div className="sr-only" role="log" aria-live="polite" aria-atomic="true" aria-label="Live captions">{msg}</div>;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Page
+   ════════════════════════════════════════════════════════════════════════════ */
+export default function MeetRoomPage() {
+  // useSearchParams needs a Suspense boundary under `output: "export"`.
+  return (
+    <Suspense fallback={<div className="meet"><Skeleton width="100%" height={320} radius={12} /></div>}>
+      <MeetRoom />
+    </Suspense>
+  );
+}
+
+function MeetRoom() {
+  // Static export cannot enumerate random room IDs, so the code travels as ?id=abc-defg-hij.
+  const roomId = useSearchParams().get('id') ?? '';
+  const router = useRouter();
+  const { user } = useAuth();
+  const toast = useToast();
+  const valid = ROOM_ID_RE.test(roomId);
+  const [creating, setCreating] = useState(false);
+  useEffect(() => { if (valid) setCreating(wasCreated(roomId)); }, [valid, roomId]);   // sessionStorage: client only
+  const selfId = user?.id ?? '';
+
+  const media = useLocalMedia();
+  const [phase, setPhase] = useState<'prejoin' | 'call'>('prejoin');
+  const [panel, setPanel] = useState<null | 'chat' | 'people'>(null);
+  const [capOpen, setCapOpen] = useState(false);
+  const [speechOn, setSpeechOn] = useState(false);    // transcribe MY speech and send it
+  const [signOn, setSignOn] = useState(false);      // recognise MY signs (on-device) and send words
+  const [showCaps, setShowCaps] = useState(true);     // show OTHER people's speech captions
+  const [speechLang, setSpeechLang] = useState(LANGUAGES[0].speech);
+  const [confirm, setConfirm] = useState<string | null>(null);       // two-step confirmation key
+  const [seenChat, setSeenChat] = useState(0);
+  const chatBtnRef = useRef<HTMLButtonElement>(null);
+  const peopleBtnRef = useRef<HTMLButtonElement>(null);
+  const capBtnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const lastPanel = useRef<'chat' | 'people' | null>(null);
+
+  // `media` and `room` are rebuilt every render; long-lived callbacks read them through refs.
+  const mediaRef = useRef(media);
+  mediaRef.current = media;
+  const roomRef = useRef<Room | null>(null);
+
+  const room = useMeetRoom({
+    roomId, create: creating, selfId, stream: media.stream,
+    onForceMute: () => {
+      mediaRef.current.setMic(false);
+      roomRef.current?.sendState({ mic: false });
+      toast('The host muted your microphone.', 'info');
+    },
+    onNotice: (n) => {
+      if (n.type === 'joined') toast(`${n.name} joined`, 'info');
+      else if (n.type === 'left') toast(`${n.name} left`, 'info');
+      else if (n.type === 'host') toast('You are now the host.', 'info');
+    },
+  });
+  roomRef.current = room;
+
+  const inCall = phase === 'call';
+  const joined = room.status === 'joined';
+  const closed = inCall && (room.status === 'error' || room.status === 'ended');
+  const hasAudio = !!media.stream?.getAudioTracks().length;
+  const hasVideo = !!media.stream?.getVideoTracks().length;
+
+  /* ── lifecycle ────────────────────────────────────────────────────────── */
+  useEffect(() => { if (valid) media.start(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [valid]);
+  useEffect(() => { if (closed) media.stop(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [closed]);
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(roomLink(roomId)); toast('Meeting link copied', 'success'); }
+    catch { toast('Could not copy. Select and copy the code instead.', 'error'); }
+  };
+
+  const ask = useCallback((key: string, action: () => void) => {
+    setConfirm((c) => {
+      if (c === key) { action(); return null; }
+      setTimeout(() => setConfirm((x) => (x === key ? null : x)), 4000);
+      return key;
+    });
+  }, []);
+
+  const join = () => {
+    setPhase('call');
+    room.join({ mic: media.mic && hasAudio, cam: media.cam && hasVideo, signing: false, sharing: false });
+  };
+
+  const leave = () => { room.leave(); media.stop(); router.push('/dashboard/meet'); };
+  const endAll = () => { room.endForAll(); media.stop(); router.push('/dashboard/meet'); };
+  const retry = () => { setPhase('prejoin'); setPanel(null); setSpeechOn(false); setSignOn(false); media.start(); };
+
+  /* ── mic / cam / screen share ─────────────────────────────────────────── */
+  const toggleMic = () => { const on = !media.mic; media.setMic(on); room.sendState({ mic: on }); };
+  const toggleCam = () => { const on = !media.cam; media.setCam(on); room.sendState({ cam: on }); };
+
+  const stopSharing = useCallback(() => {
+    const m = mediaRef.current;
+    m.stopShare();
+    roomRef.current?.setOutgoingVideo(m.stream?.getVideoTracks()[0] ?? null);   // back to the camera
+    roomRef.current?.sendState({ sharing: false });
+  }, []);
+
+  const toggleShare = async () => {
+    if (media.screenTrack) return stopSharing();
+    const track = await media.startShare();
+    if (!track) { toast('Screen sharing was cancelled or is not available in this browser.', 'info'); return; }
+    track.addEventListener('ended', stopSharing, { once: true });   // the browser's own "Stop sharing" bar
+    room.setOutgoingVideo(track);
+    room.sendState({ sharing: true });
+  };
+
+  /* ── speech captions (Phase 3) ────────────────────────────────────────── */
+  const lastInterim = useRef(0);
+  const speech = useSpeechRecognition({
+    lang: speechLang,
+    continuous: true,
+    onFinal: (t: string) => roomRef.current?.sendCaption('speech', t, true),            // every final result, once
+    onInterim: (t: string) => {                                                         // throttled live preview
+      const now = Date.now();
+      if (now - lastInterim.current < INTERIM_MIN_GAP_MS) return;
+      lastInterim.current = now;
+      roomRef.current?.sendCaption('speech', t, false);
+    },
+  });
+
+  // Chrome's recognizer opens its OWN mic capture, so muting the WebRTC track would not stop it.
+  // We therefore only run it while the mic is actually on.
+  const wantSpeech = speechOn && joined && media.mic && hasAudio;
+  const wantRef = useRef(false);
+  wantRef.current = wantSpeech;
+  const wasListening = useRef(false);
+  useEffect(() => {
+    if (wantSpeech) speech.start();
+    else speech.stop();
+    return () => speech.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantSpeech, speechLang]);
+  useEffect(() => {
+    if (speech.listening) { wasListening.current = true; return; }
+    if (wasListening.current && wantRef.current) {                              // stopped by itself: service error / permission
+      toast('Speech captions stopped. The speech service may be unavailable.', 'error');
+      setSpeechOn(false);
+    }
+    wasListening.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speech.listening]);
+
+  /* ── sign captions (Phase 4) ──────────────────────────────────────────── */
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const skeletonRef = useRef<HTMLCanvasElement | null>(null);
+  // The model reads the CAMERA, so pause it while the tile shows a screen share or the camera is off.
+  const signRunnable = signOn && joined && media.cam && hasVideo && !media.screenTrack;
+  const sign = useSignCaptions({
+    enabled: signRunnable,
+    videoRef: localVideoRef,
+    canvasRef: skeletonRef,
+    onWord: (w: string) => roomRef.current?.sendCaption('sign', w),
+    onAutoDisable: (why: 'slow' | 'error') => {
+      setSignOn(false);
+      toast(why === 'slow'
+        ? 'Sign captions turned off: this device is too slow to keep up.'
+        : 'Could not start sign captions. Check your connection and try again.', 'error');
+    },
+  });
+  const signing = sign.status === 'running';
+  useEffect(() => { roomRef.current?.sendState({ signing }); }, [signing]);   // "Signing" badge for everyone
+  useEffect(() => { if (closed) setSignOn(false); }, [closed]);
+
+  const toggleSign = () => {
+    if (signOn) { setSignOn(false); return; }
+    if (!hasVideo || !media.cam) { toast('Turn your camera on to use sign captions.', 'info'); return; }
+    if (media.screenTrack) { toast('Stop sharing your screen to use sign captions.', 'info'); return; }
+    setSignOn(true);
+    toast('Sign captions on. Recognition runs on your device; your video is not uploaded.', 'info');
+  };
+
+  /* ── escape closes the captions popover ───────────────────────────────── */
+  useEffect(() => {
+    if (!capOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setCapOpen(false); capBtnRef.current?.focus(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [capOpen]);
+  useEffect(() => {                                                             // move focus into the popover when it opens
+    if (capOpen) document.querySelector<HTMLElement>('#meet-cap-pop button, #meet-cap-pop input, #meet-cap-pop select')?.focus();
+  }, [capOpen]);
+
+  /* ── side panel focus: into the panel when it opens, back to its button when it closes; Esc closes ── */
+  useEffect(() => { if (panel) lastPanel.current = panel; }, [panel]);
+  useEffect(() => {
+    if (panel) { panelRef.current?.focus(); return undefined; }
+    const btn = lastPanel.current === 'chat' ? chatBtnRef : lastPanel.current === 'people' ? peopleBtnRef : null;
+    btn?.current?.focus();
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!panel]);
+  useEffect(() => {
+    if (!panel) return undefined;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !capOpen) setPanel(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [panel, capOpen]);
+
+  /* ── chat unread badge ────────────────────────────────────────────────── */
+  useEffect(() => { if (panel === 'chat') setSeenChat(room.chat.length); }, [panel, room.chat.length]);
+  const unread = panel === 'chat' ? 0 : room.chat.slice(seenChat).filter((m) => !m.own).length;
+
+  /* ── tiles ────────────────────────────────────────────────────────────── */
+  const sharing = !!media.screenTrack;
+  const localView = useMemo(
+    () => (media.screenTrack ? new MediaStream([media.screenTrack]) : media.stream),
+    [media.screenTrack, media.stream],
+  );
+  const cap = (id: PeerId, k: 'speech' | 'sign') => room.captions[id]?.[k]?.text || '';
+
+  /* ════════════ render ════════════ */
+  if (!valid) {
+    return (<div className="meet"><EmptyState icon="video" title="Invalid meeting code"
+      message="Meeting codes look like abc-defg-hij."
+      action={<Link className="btn btn-outline" href="/dashboard/meet">Back to Meet</Link>}/></div>);
+  }
+
+  if (closed) {
+    const kicked = room.error?.code === 'kicked' || room.error?.code === 'ended';
+    return (<div className="meet"><EmptyState icon={kicked ? 'phone-off' : 'video-off'}
+      title={kicked ? 'You left the meeting' : 'Could not join'}
+      message={room.error?.message || 'Something went wrong.'}
+      action={<span className="meet-end-actions">
+        <Link className="btn btn-outline" href="/dashboard/meet">Back to Meet</Link>
+        {!kicked && <button type="button" className="btn btn-primary" onClick={retry}>Try again</button>}
+      </span>}/></div>);
+  }
+
+  if (!inCall) {
+    return (<div className="meet"><PreJoin media={media} roomId={roomId} creating={creating} onJoin={join} onCopy={copyLink}/></div>);
+  }
+
+  const selfName = user?.username || 'You';
+  const peerNames: Record<string, string> = Object.fromEntries(room.peers.map((p) => [String(p.id), p.name]));
+  const count = room.peers.length + 1;
+  const connectingMsg = room.status === 'connecting'
+    ? (room.connectIssue ? 'Still trying to reach the server…' : 'Connecting… the server may be waking up, this can take up to a minute.')
+    : room.status === 'reconnecting' ? 'Connection lost. Reconnecting…' : null;
+
+  return (<div className={`meet meet-call ${panel ? 'with-panel' : ''}`}>
+    <header className="meet-bar">
+      <span className="meet-code">{roomId}</span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={copyLink} aria-label="Copy meeting link"><Icon name="copy" size={16}/> Copy link</button>
+      <Chip dot>{count} / 3</Chip>
+      {room.isHost && <Chip tone="teal">You are the host</Chip>}
+    </header>
+
+    {connectingMsg && <div className="meet-banner" role="status"><span className="spinner dark" aria-hidden="true"/>{connectingMsg}</div>}
+
+    <div className="meet-stage" data-count={count}>
+      {joined && room.peers.length === 0 && (<div className="meet-invite">
+        <p>You’re the only one here. Share the code <b>{roomId}</b> to invite up to 2 more people.</p>
+        <button type="button" className="btn btn-outline btn-sm" onClick={copyLink}><Icon name="copy" size={16}/> Copy link</button>
+      </div>)}
+
+      <VideoTile local name={selfName} stream={localView} mirror micOn={media.mic && hasAudio}
+        camOn={media.cam && hasVideo} sharing={sharing} host={room.isHost}
+        speech={cap(selfId, 'speech')} sign={cap(selfId, 'sign')} signing={signing} videoRef={localVideoRef}>
+        <canvas ref={skeletonRef} className="meet-skeleton mirror" aria-hidden="true"/>
+        {signOn && (<div className="meet-signdbg" role="status" aria-live="off">
+          {sign.status === 'loading' ? 'Loading sign model…'
+            : sign.debug?.label ? `${sign.debug.label} ${Math.round(sign.debug.conf * 100)}% · ${Math.round(sign.debug.ms)} ms`
+            : 'Show your hand to the camera'}
+        </div>)}
+      </VideoTile>
+
+      {room.peers.map((p) => (<VideoTile key={p.id} name={p.name} stream={p.stream} micOn={p.mic} camOn={p.cam}
+        sharing={p.sharing} signing={p.signing} host={room.hostId === p.id} connection={p.connection}
+        speech={showCaps ? cap(p.id, 'speech') : ''} sign={cap(p.id, 'sign')}/>))}
+    </div>
+
+    <div className="meet-controls" role="toolbar" aria-label="Meeting controls">
+      <button type="button" className={`meet-ctl ${media.mic && hasAudio ? '' : 'off'}`} disabled={!hasAudio} aria-pressed={!media.mic}
+        aria-label={media.mic ? 'Turn microphone off' : 'Turn microphone on'} onClick={toggleMic}>
+        <Icon name={media.mic && hasAudio ? 'mic' : 'mic-off'}/>
+      </button>
+      <button type="button" className={`meet-ctl ${media.cam && hasVideo ? '' : 'off'}`} disabled={!hasVideo} aria-pressed={!media.cam}
+        aria-label={media.cam ? 'Turn camera off' : 'Turn camera on'} onClick={toggleCam}>
+        <Icon name={media.cam && hasVideo ? 'video' : 'video-off'}/>
+      </button>
+      <button type="button" className={`meet-ctl ${sharing ? 'on' : ''}`} aria-pressed={sharing}
+        aria-label={sharing ? 'Stop sharing your screen' : 'Share your screen'} onClick={toggleShare}>
+        <Icon name="monitor"/>
+      </button>
+      <button type="button" className={`meet-ctl ${signOn ? 'on' : ''}`} aria-pressed={signOn}
+        title="Sign captions: recognised on your device, your video is not uploaded"
+        aria-label={signOn ? 'Turn sign captions off' : 'Turn sign captions on'} onClick={toggleSign}>
+        <Icon name="hand"/>
+      </button>
+
+      <span className="meet-pop-wrap">
+        <button type="button" ref={capBtnRef} className={`meet-ctl ${speechOn || showCaps ? 'on' : ''}`} aria-expanded={capOpen} aria-controls="meet-cap-pop"
+          aria-label="Caption settings" onClick={() => setCapOpen((o) => !o)}>
+          <Icon name="captions"/>
+        </button>
+        {capOpen && (<div id="meet-cap-pop" className="meet-pop" role="dialog" aria-label="Caption settings">
+          <Switch checked={showCaps} onChange={setShowCaps} label="Show others’ speech captions"/>
+          {speech.supported ? (<>
+            <Switch checked={speechOn} onChange={setSpeechOn} label="Caption my speech for others"/>
+            <div className="field">
+              <label htmlFor="meet-cap-lang">I am speaking</label>
+              <select id="meet-cap-lang" className="input" value={speechLang} onChange={(e) => setSpeechLang(e.target.value)}>
+                {LANGUAGES.map((l) => <option key={l.code} value={l.speech}>{l.flag} {l.name}</option>)}
+              </select>
+            </div>
+            {speechOn && !media.mic && <p className="small muted">Captions are paused while your microphone is off.</p>}
+            <p className="small muted">Chrome’s speech captions use Google’s speech service: while this is on, your voice is sent to Google for transcription.</p>
+          </>) : (<p className="small muted">This browser cannot transcribe speech, but you can still read other people’s captions.</p>)}
+        </div>)}
+      </span>
+
+      <button type="button" ref={chatBtnRef} className={`meet-ctl ${panel === 'chat' ? 'on' : ''}`} aria-pressed={panel === 'chat'} aria-label={`Chat${unread ? `, ${unread} unread` : ''}`}
+        onClick={() => setPanel((p) => (p === 'chat' ? null : 'chat'))}>
+        <Icon name="message"/>{unread > 0 && <i className="meet-dot" aria-hidden="true">{unread > 9 ? '9+' : unread}</i>}
+      </button>
+      <button type="button" ref={peopleBtnRef} className={`meet-ctl ${panel === 'people' ? 'on' : ''}`} aria-pressed={panel === 'people'} aria-label={`Participants, ${count}`}
+        onClick={() => setPanel((p) => (p === 'people' ? null : 'people'))}>
+        <Icon name="users"/>
+      </button>
+
+      <button type="button" className="meet-ctl leave" aria-label="Leave meeting" onClick={leave}><Icon name="phone-off"/></button>
+      {room.isHost && (<button type="button" className="btn btn-outline btn-sm danger" onClick={() => ask('end', endAll)}>
+        {confirm === 'end' ? 'Confirm: end for all' : 'End for all'}
+      </button>)}
+    </div>
+
+    {panel && (<SidePanel tab={panel} setTab={setPanel} onClose={() => setPanel(null)} room={room}
+      selfName={selfName} media={media} confirm={confirm} ask={ask} panelRef={panelRef}/>)}
+    <CaptionAnnouncer captions={room.captions} names={peerNames} selfId={selfId} showSpeech={showCaps}/>
+  </div>);
 }
 
 ========================================================================
@@ -17497,6 +18311,15 @@ const PATHS = {
   bot: (<><rect x="4" y="8" width="16" height="11" rx="4" /><path d="M12 8V5.5" /><circle cx="12" cy="4" r="1" /><path d="M9 13v1.5" /><path d="M15 13v1.5" /></>),
   plus: (<><path d="M12 5v14" /><path d="M5 12h14" /></>),
   'arrow-right': (<><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></>),
+  // ── added for Meet (video rooms) ──
+  video: (<><rect x="3" y="6" width="13" height="12" rx="2.5" /><path d="M16 10.5l5-3v9l-5-3" /></>),
+  'video-off': (<><path d="M10 6H5.5A2.5 2.5 0 0 0 3 8.5v7A2.5 2.5 0 0 0 5.5 18h8a2.5 2.5 0 0 0 2.5-2.5V14" /><path d="M16 10.5l5-3v9l-3.2-1.9" /><path d="M3 3l18 18" /></>),
+  'mic-off': (<><path d="M15 9.3V6a3 3 0 0 0-5.9-.8" /><path d="M9 9v3a3 3 0 0 0 4.7 2.5" /><path d="M19 11a7 7 0 0 1-.9 3.4" /><path d="M5 11a7 7 0 0 0 10.4 6.1" /><path d="M12 18v3" /><path d="M3 3l18 18" /></>),
+  monitor: (<><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8" /><path d="M12 16v4" /></>),
+  hand: (<><path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10.5V4a1.5 1.5 0 0 1 3 0v6.5" /><path d="M14 10V5.5a1.5 1.5 0 0 1 3 0V13" /><path d="M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a5 5 0 0 1-4-2L4.6 13.4a1.5 1.5 0 0 1 2.3-1.9L8 12.7" /></>),
+  captions: (<><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M10.5 10.3a2 2 0 1 0 0 3.4" /><path d="M17 10.3a2 2 0 1 0 0 3.4" /></>),
+  'phone-off': <path d="M3.5 14.6c4.7-3.6 12.3-3.6 17 0 .6.5.7 1.4.1 2l-1.3 1.5a1.4 1.4 0 0 1-1.7.3l-2.3-1.2a1.4 1.4 0 0 1-.8-1.3V14.5c-1.7-.5-3.5-.5-5.2 0v1.4c0 .5-.3 1-.8 1.3l-2.3 1.2a1.4 1.4 0 0 1-1.7-.3l-1.3-1.5a1.4 1.4 0 0 1 .1-2Z" />,
+  copy: (<><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.5" /><path d="M15.5 8.5V6.5A2.5 2.5 0 0 0 13 4H6.5A2.5 2.5 0 0 0 4 6.5V13a2.5 2.5 0 0 0 2.5 2.5h2" /></>),
 } as const;
 
 export type IconName = keyof typeof PATHS;
@@ -17556,6 +18379,93 @@ export default function Logo({ href = '/' }: { href?: string; variant?: 'default
         Lingua<b>Wave</b>
       </span>
     </Link>
+  );
+}
+
+========================================================================
+FILE: frontend/components/VideoTile.tsx
+========================================================================
+'use client';
+
+import { useEffect, useRef } from 'react';
+import type { MutableRefObject, ReactNode } from 'react';
+import Icon from './Icon';
+import { Avatar } from './ui';
+
+type Props = {
+  name: string;
+  stream: MediaStream | null;
+  local?: boolean;
+  mirror?: boolean;
+  micOn?: boolean;
+  camOn?: boolean;
+  sharing?: boolean;
+  host?: boolean;
+  signing?: boolean;
+  connection?: string;
+  speech?: string;
+  sign?: string;
+  videoRef?: MutableRefObject<HTMLVideoElement | null>;
+  children?: ReactNode;
+};
+
+/**
+ * One participant's tile: video, name bar, state badges and caption lines.
+ * The <video> element is ALWAYS mounted (just hidden when the camera is off) because remote audio
+ * plays through it. Local tiles are muted (no echo) and mirrored by CSS only; the stream itself is
+ * never flipped, so other people see you the right way round.
+ */
+export default function VideoTile({
+  name, stream, local = false, mirror = false, micOn = true, camOn = true, sharing = false,
+  host = false, signing = false, connection = 'connected', speech = '', sign = '', videoRef, children,
+}: Props) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const setRef = (el: HTMLVideoElement | null) => { ref.current = el; if (videoRef) videoRef.current = el; };   // optional outer ref (sign engine reads the raw <video>)
+  useEffect(() => {
+    const v = ref.current;
+    if (v && v.srcObject !== (stream || null)) v.srcObject = stream || null;
+  }, [stream]);
+
+  const showVideo = !!stream && (camOn || sharing);
+  const connecting = !local && (connection === 'new' || connection === 'connecting');
+  const lost = !local && (connection === 'failed' || connection === 'disconnected');
+
+  return (
+    <figure className={`meet-tile ${local ? 'is-local' : ''} ${signing ? 'is-signing' : ''}`}>
+      <video
+        ref={setRef}
+        autoPlay
+        playsInline
+        muted={local}
+        className={`${mirror && !sharing ? 'mirror' : ''} ${sharing ? 'contain' : ''} ${showVideo ? '' : 'vid-off'}`}
+        aria-label={`${local ? 'Your' : `${name}’s`} video`}
+      />
+      {!showVideo && (<div className="meet-tile-off"><Avatar name={name} size={72} /></div>)}
+      {children}
+      {connecting && <div className="meet-tile-status" role="status">Connecting…</div>}
+      {lost && <div className="meet-tile-status bad" role="status">Connection lost</div>}
+
+      <div className="meet-caps" aria-hidden="true">
+        {sign && (
+          <p className="cap cap-sign">
+            <Icon name="hand" size={14} /><span className="sr-only">{name} signs: </span>{sign}
+          </p>
+        )}
+        {speech && (<p className="cap cap-speech"><b>{name}</b> {speech}</p>)}
+      </div>
+
+      <figcaption className="meet-tile-bar">
+        <span className="meet-tile-name">{local ? `${name} (You)` : name}</span>
+        {host && <span className="meet-badge">Host</span>}
+        {sharing && <span className="meet-badge"><Icon name="monitor" size={12} /> Presenting</span>}
+        {signing && <span className="meet-badge sign"><Icon name="hand" size={12} /> Signing</span>}
+        {!micOn && (
+          <span className="meet-muted" title="Microphone off">
+            <Icon name="mic-off" size={14} /><span className="sr-only">Microphone off</span>
+          </span>
+        )}
+      </figcaption>
+    </figure>
   );
 }
 
@@ -17987,6 +18897,9 @@ export const api = {
   conversation: {
     chat: (d: any) => request('POST', '/conversation/chat', d),
   },
+  meet: {
+    ice: () => request('GET', '/meet/ice'),
+  },
 };
 
 export type User = {
@@ -18111,6 +19024,995 @@ export async function getGoogleIdToken(): Promise<string> {
 }
 
 ========================================================================
+FILE: frontend/lib/meet/captioner.ts
+========================================================================
+// Turns a noisy stream of per-frame predictions into discrete words.
+// Repeats of the same word are allowed once the hand leaves / pauses, low-confidence frames are
+// ignored, and words are emitted individually (the UI joins them with spaces).
+export type CaptionerOpts = { window?: number; minVotes?: number; minConf?: number; repeatMs?: number; gapMs?: number };
+
+export function makeCaptioner({ window = 8, minVotes = 6, minConf = 0.8, repeatMs = 1500, gapMs = 500 }: CaptionerOpts = {}) {
+  let buf: string[] = [], lastWord = '', lastAt = 0, lastSeen = 0;
+  return function feed(label: string | null | undefined, conf: number, now = Date.now()): { text: string; conf: number } | null {
+    if (!label || conf < minConf) {
+      if (now - lastSeen > gapMs) { lastWord = ''; buf = []; }       // hand gone / unsure for a while: allow same word again
+      return null;
+    }
+    lastSeen = now;
+    buf.push(label); if (buf.length > window) buf.shift();
+    const counts: Record<string, number> = {}; for (const l of buf) counts[l] = (counts[l] || 0) + 1;
+    const [top, n] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    if (n >= minVotes && (top !== lastWord || now - lastAt > repeatMs)) {
+      lastWord = top; lastAt = now; buf = [];
+      return { text: top, conf };
+    }
+    return null;
+  };
+}
+
+========================================================================
+FILE: frontend/lib/meet/classifier.ts
+========================================================================
+// Tiny MLP forward pass (63 -> 64 -> 32 -> N) for the exported sign model. No ML runtime needed.
+// Weights come from /sign_model.json (public/), produced by ml/export_model.py.
+
+export type Landmark = { x: number; y: number; z: number };
+export type Layer = { w: number[][]; b: number[] };
+export type SignModel = { layers: Layer[]; labels: string[] };
+export type Prediction = { label: string; conf: number; probs: number[] };
+export type Predictor = ((x: ArrayLike<number>) => Prediction) & { labels: string[] };
+
+/** Same preprocessing as training: wrist at origin, divide by max |coordinate|. `lm` = 21 x {x,y,z}. */
+export function normalize(lm: Landmark[]): Float32Array {
+  const out = new Float32Array(63);
+  const bx = lm[0].x, by = lm[0].y, bz = lm[0].z;
+  let mx = 0;
+  for (let i = 0; i < 21; i++) {
+    const x = lm[i].x - bx, y = lm[i].y - by, z = lm[i].z - bz;
+    out[i * 3] = x; out[i * 3 + 1] = y; out[i * 3 + 2] = z;
+    mx = Math.max(mx, Math.abs(x), Math.abs(y), Math.abs(z));
+  }
+  if (mx > 0) for (let i = 0; i < 63; i++) out[i] /= mx;
+  return out;
+}
+
+export async function loadClassifier(url = '/sign_model.json'): Promise<Predictor> {
+  const m = await (await fetch(url)).json();
+  return makeClassifier(m);
+}
+
+export function makeClassifier(m: SignModel): Predictor {
+  const { layers, labels } = m;
+  const predict = function predict(x: ArrayLike<number>): Prediction {
+    let a: ArrayLike<number> = x;
+    layers.forEach((L, li) => {
+      const next = new Float32Array(L.b.length);
+      for (let o = 0; o < next.length; o++) {
+        let s = L.b[o]; const w = L.w[o];
+        for (let i = 0; i < a.length; i++) s += w[i] * a[i];
+        next[o] = li < layers.length - 1 ? Math.max(0, s) : s;      // relu on hidden layers
+      }
+      a = next;
+    });
+    const logits = Array.from(a);
+    let max = -Infinity; for (const v of logits) if (v > max) max = v;
+    let sum = 0; const p = logits.map((v) => { const e = Math.exp(v - max); sum += e; return e; });
+    let best = 0; for (let i = 0; i < p.length; i++) { p[i] /= sum; if (p[i] > p[best]) best = i; }
+    return { label: labels[best], conf: p[best], probs: p };
+  } as Predictor;
+  predict.labels = labels;
+  return predict;
+}
+
+========================================================================
+FILE: frontend/lib/meet/drawHand.ts
+========================================================================
+import type { Landmark } from './classifier';
+
+export const HAND_CONNECTIONS: [number, number][] = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
+
+/**
+ * Draw one hand skeleton on `canvas`, which sits exactly over a <video> that uses object-fit: cover
+ * (or contain). Landmarks are normalised to the VIDEO frame, so we map through the same crop the browser
+ * applies. Mirroring is done by CSS (.mirror) on the canvas, same as on the video, so nothing is flipped here.
+ * Pass landmarks = null to just clear.
+ */
+export function coverMap(vw: number, vh: number, cw: number, ch: number, fit: 'cover' | 'contain' = 'cover') {
+  const k = fit === 'contain' ? Math.min(cw / vw, ch / vh) : Math.max(cw / vw, ch / vh);
+  return { k, ox: (cw - vw * k) / 2, oy: (ch - vh * k) / 2 };
+}
+
+export function drawHand(
+  canvas: HTMLCanvasElement | null | undefined,
+  video: HTMLVideoElement | null | undefined,
+  landmarks: Landmark[] | null | undefined,
+  color = '#f5a524',
+) {
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) {
+    canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+  }
+  const g = canvas.getContext('2d');
+  if (!g) return;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, cw, ch);
+  if (!landmarks || !video?.videoWidth) return;
+  const { k, ox, oy } = coverMap(video.videoWidth, video.videoHeight, cw, ch);
+  const pt = (l: Landmark): [number, number] => [ox + l.x * video.videoWidth * k, oy + l.y * video.videoHeight * k];
+  g.lineWidth = 3; g.lineCap = 'round'; g.strokeStyle = color; g.fillStyle = '#fff';
+  g.beginPath();
+  for (const [a, b] of HAND_CONNECTIONS) { const [x1, y1] = pt(landmarks[a]); const [x2, y2] = pt(landmarks[b]); g.moveTo(x1, y1); g.lineTo(x2, y2); }
+  g.stroke();
+  for (const l of landmarks) { const [x, y] = pt(l); g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill(); }
+}
+
+========================================================================
+FILE: frontend/lib/meet/roomId.ts
+========================================================================
+// Meeting room IDs look like "abc-defg-hij" (3-4-3 lowercase letters).
+// ~26^10 ≈ 1.4e14 combinations, generated from crypto.getRandomValues (not Math.random).
+export const ROOM_ID_RE = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
+
+const A = 'abcdefghijklmnopqrstuvwxyz';
+
+export function generateRoomId(): string {
+  const letters: string[] = [];
+  const buf = new Uint8Array(32);
+  // Rejection sampling: 234 = 26 * 9, so values >= 234 are dropped to avoid modulo bias.
+  while (letters.length < 10) {
+    crypto.getRandomValues(buf);
+    for (const b of buf) {
+      if (b < 234 && letters.length < 10) letters.push(A[b % 26]);
+    }
+  }
+  const s = letters.join('');
+  return `${s.slice(0, 3)}-${s.slice(3, 7)}-${s.slice(7)}`;
+}
+
+/**
+ * Accepts a bare code or a pasted link (".../dashboard/meet/room?id=abc-defg-hij", or the older
+ * ".../dashboard/meet/abc-defg-hij" form); returns a valid room ID or null.
+ */
+export function parseRoomInput(input: unknown): string | null {
+  if (typeof input !== 'string') return null;
+  let s = input.trim().toLowerCase();
+  if (!s) return null;
+  if (/^https?:\/\//.test(s)) {
+    try {
+      const u = new URL(s);
+      const q = u.searchParams.get('id');
+      s = q && ROOM_ID_RE.test(q) ? q : u.pathname;
+    } catch { return null; }
+  }
+  s = s.split(/[/?#]/).filter(Boolean).pop() || '';
+  return ROOM_ID_RE.test(s) ? s : null;
+}
+
+/** Next.js app uses `output: "export"`, so the room is a query param, not a dynamic [roomId] segment. */
+export const roomPath = (id: string) => `/dashboard/meet/room?id=${id}`;
+export const roomLink = (id: string) => `${window.location.origin}${roomPath(id)}`;
+
+// "I am creating this meeting" is remembered per tab (sessionStorage) instead of router state,
+// so a link that someone else opens never carries the create flag.
+const CREATE_KEY = (id: string) => `meet:create:${id}`;
+export function markCreate(id: string) {
+  try { sessionStorage.setItem(CREATE_KEY(id), '1'); } catch { /* storage unavailable */ }
+}
+export function wasCreated(id: string): boolean {
+  try { return sessionStorage.getItem(CREATE_KEY(id)) === '1'; } catch { return false; }
+}
+
+========================================================================
+FILE: frontend/lib/meet/signEngine.ts
+========================================================================
+// Runs MediaPipe HandLandmarker + the JSON classifier ON THE USER'S DEVICE. No frame ever leaves the browser.
+import { loadClassifier, normalize } from './classifier';
+import type { Landmark } from './classifier';
+
+export const WASM_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'; // keep in sync with package.json
+export { HAND_CONNECTIONS } from './drawHand';     // lives in drawHand.ts so the UI never statically imports this file
+
+export type SignResult = { label: string | null; conf: number; landmarks: Landmark[] | null; ms: number };
+
+export async function createSignEngine({ video, onResult, fps = 12 }: {
+  video: HTMLVideoElement; onResult: (r: SignResult) => void; fps?: number;
+}) {
+  const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision');
+  const fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
+  const make = (delegate: 'GPU' | 'CPU') => HandLandmarker.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: '/hand_landmarker.task', delegate },
+    runningMode: 'VIDEO', numHands: 1,
+  });
+  let landmarker: Awaited<ReturnType<typeof make>>;
+  try { landmarker = await make('GPU'); } catch { landmarker = await make('CPU'); }
+  const predict = await loadClassifier();
+
+  let timer: ReturnType<typeof setTimeout> | null = null, running = false, lastTs = -1;
+  const step = () => {
+    if (!running) return;
+    try {
+      if (video.readyState >= 2 && video.videoWidth) {
+        const t0 = performance.now();
+        const ts = Math.max(t0, lastTs + 1); lastTs = ts;                    // timestamps must increase
+        const res = landmarker.detectForVideo(video, ts);
+        const lm = (res.landmarks?.[0] as Landmark[] | undefined) ?? null;
+        const r = lm ? predict(normalize(lm)) : { label: null, conf: 0 };
+        onResult({ label: r.label, conf: r.conf, landmarks: lm, ms: performance.now() - t0 }); // ms = detect + classify cost of THIS frame
+      }
+    } catch (e) { console.warn('[sign] frame failed', e); }
+    timer = setTimeout(step, 1000 / fps);
+  };
+  return {
+    start() { if (!running) { running = true; step(); } },
+    stop() { running = false; if (timer) clearTimeout(timer); },
+    close() { running = false; if (timer) clearTimeout(timer); landmarker.close(); },
+  };
+}
+
+========================================================================
+FILE: frontend/lib/meet/slowGuard.ts
+========================================================================
+// Decides when sign recognition is too slow for this device and should switch itself off.
+// Fed the per-frame cost (ms) reported by signEngine. The first `warmup` frames are ignored (GPU shader
+// compile / first inference are always slow); after that, if the average of the last `size` frames is
+// above `maxMs`, feed() returns true (once) so the caller can disable sign mode.
+export function makeSlowGuard({ size = 30, maxMs = 150, warmup = 10 }: { size?: number; maxMs?: number; warmup?: number } = {}) {
+  let seen = 0, tripped = false;
+  const win: number[] = [];
+  return function feed(ms: number): boolean {
+    if (tripped || !Number.isFinite(ms)) return false;
+    if (++seen <= warmup) return false;
+    win.push(ms); if (win.length > size) win.shift();
+    if (win.length < size) return false;
+    const avg = win.reduce((a, b) => a + b, 0) / win.length;
+    if (avg > maxMs) { tripped = true; return true; }
+    return false;
+  };
+}
+
+========================================================================
+FILE: frontend/lib/meet/useLocalMedia.ts
+========================================================================
+'use client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+// Owns the local camera/mic stream, device lists, and screen share.
+// Every hardware device (camera light!) is released in stop() and on unmount.
+
+const stopStream = (s: MediaStream | null | undefined) => s?.getTracks().forEach((t) => t.stop());
+
+export type MediaErrorKey = 'denied' | 'notfound' | 'inuse' | 'other' | 'unsupported';
+
+const classify = (err: any): MediaErrorKey => {
+  const n = err?.name;
+  if (n === 'NotAllowedError' || n === 'SecurityError') return 'denied';
+  if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'notfound';
+  if (n === 'NotReadableError' || n === 'AbortError') return 'inuse';
+  return 'other';
+};
+
+export const MEDIA_ERRORS: Record<MediaErrorKey, string> = {
+  denied: 'Camera and microphone access is blocked. Click the lock icon in the address bar, allow both, then reload.',
+  notfound: 'No camera or microphone was found. You can still join to watch, listen and chat.',
+  inuse: 'Your camera or microphone is being used by another app or tab. Close it and try again.',
+  other: 'Could not start your camera or microphone.',
+  unsupported: 'This browser cannot access a camera or microphone. Use a recent version of Chrome.',
+};
+
+export type MediaPick = { audio?: string; video?: string };
+
+export default function useLocalMedia() {
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [error, setError] = useState<MediaErrorKey | null>(null);        // key of MEDIA_ERRORS, or null
+  const [mic, setMicState] = useState(true);
+  const [cam, setCamState] = useState(true);
+  const [devices, setDevices] = useState<{ audio: MediaDeviceInfo[]; video: MediaDeviceInfo[] }>({ audio: [], video: [] });
+  const [ids, setIds] = useState({ audio: '', video: '' });
+  const [screenTrack, setScreenTrack] = useState<MediaStreamTrack | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const screenRef = useRef<MediaStreamTrack | null>(null);
+  const micRef = useRef(true);
+  const camRef = useRef(true);
+  const idsRef = useRef(ids);
+  const seq = useRef(0);                            // ignore results of superseded start() calls
+  idsRef.current = ids;
+
+  const refreshDevices = useCallback(async () => {
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      setDevices({
+        audio: list.filter((d) => d.kind === 'audioinput'),
+        video: list.filter((d) => d.kind === 'videoinput'),
+      });
+    } catch { /* ignore */ }
+  }, []);
+
+  /** (Re)acquire camera + mic. Falls back to audio-only / video-only when one is missing. */
+  const start = useCallback(async (pick: MediaPick = {}): Promise<MediaStream | null> => {
+    if (!navigator.mediaDevices?.getUserMedia) { setError('unsupported'); return null; }
+    const my = ++seq.current;
+    stopStream(streamRef.current);
+    streamRef.current = null;
+    const audioId = pick.audio ?? idsRef.current.audio;
+    const videoId = pick.video ?? idsRef.current.video;
+    const audio: MediaTrackConstraints = {
+      echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+      ...(audioId ? { deviceId: { exact: audioId } } : {}),
+    };
+    const video: MediaTrackConstraints = {
+      width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 },
+      ...(videoId ? { deviceId: { exact: videoId } } : {}),
+    };
+    let s: MediaStream | null = null;
+    let err: unknown = null;
+    for (const c of [{ audio, video }, { audio, video: false }, { audio: false, video }] as MediaStreamConstraints[]) {
+      try { s = await navigator.mediaDevices.getUserMedia(c); err = null; break; }
+      catch (e) {
+        err = e;
+        if (classify(e) === 'denied') break;        // no point trying the other combinations
+      }
+    }
+    if (my !== seq.current) { stopStream(s); return null; }   // superseded, stopped or unmounted
+    if (!s) { setStream(null); setError(classify(err)); refreshDevices(); return null; }
+    s.getAudioTracks().forEach((t) => { t.enabled = micRef.current; });
+    s.getVideoTracks().forEach((t) => { t.enabled = camRef.current; t.contentHint = 'motion'; });
+    streamRef.current = s;
+    setStream(s);
+    setError(s.getAudioTracks().length && s.getVideoTracks().length ? null : 'notfound');
+    setIds({
+      audio: s.getAudioTracks()[0]?.getSettings().deviceId || '',
+      video: s.getVideoTracks()[0]?.getSettings().deviceId || '',
+    });
+    refreshDevices();                                // labels only appear after permission is granted
+    return s;
+  }, [refreshDevices]);
+
+  const stopShare = useCallback(() => {
+    screenRef.current?.stop();
+    screenRef.current = null;
+    setScreenTrack(null);
+  }, []);
+
+  /** Release every device. Safe to call repeatedly. */
+  const stop = useCallback(() => {
+    seq.current++;
+    stopShare();
+    stopStream(streamRef.current);
+    streamRef.current = null;
+    setStream(null);
+  }, [stopShare]);
+
+  const setMic = useCallback((on: boolean) => {
+    micRef.current = on; setMicState(on);
+    streamRef.current?.getAudioTracks().forEach((t) => { t.enabled = on; });
+  }, []);
+  const setCam = useCallback((on: boolean) => {
+    camRef.current = on; setCamState(on);
+    streamRef.current?.getVideoTracks().forEach((t) => { t.enabled = on; });
+  }, []);
+
+  /** Returns the screen video track, or null if the user cancelled / it is unsupported. */
+  const startShare = useCallback(async (): Promise<MediaStreamTrack | null> => {
+    if (!navigator.mediaDevices?.getDisplayMedia) return null;
+    try {
+      const ds = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { max: 15 } }, audio: false });
+      const track = ds.getVideoTracks()[0];
+      if (!track) return null;
+      track.contentHint = 'detail';
+      screenRef.current = track;
+      setScreenTrack(track);
+      return track;
+    } catch { return null; }
+  }, []);
+
+  useEffect(() => {
+    const md = navigator.mediaDevices;
+    md?.addEventListener?.('devicechange', refreshDevices);
+    return () => md?.removeEventListener?.('devicechange', refreshDevices);
+  }, [refreshDevices]);
+
+  // Unmount: release camera, mic and screen capture.
+  useEffect(() => () => {
+    seq.current++;
+    screenRef.current?.stop();
+    stopStream(streamRef.current);
+  }, []);
+
+  return { stream, error, mic, cam, setMic, setCam, devices, ids, start, stop, screenTrack, startShare, stopShare };
+}
+
+export type LocalMedia = ReturnType<typeof useLocalMedia>;
+
+========================================================================
+FILE: frontend/lib/meet/useMeetRoom.ts
+========================================================================
+'use client';
+/* eslint-disable react-hooks/exhaustive-deps -- mutable plumbing lives in refs on purpose; callbacks are stable */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
+import { api, getFreshToken } from '@/lib/api';
+import { SOCKET_URL } from '@/lib/config';
+
+/* ════════════════════════════════════════════════════════════════════════════
+   useMeetRoom — one hook that owns everything network-related for a meeting:
+   the Socket.IO signaling connection, one RTCPeerConnection per other person
+   (mesh, max 3 people => 2 connections per browser), the "meet" data channel,
+   remote streams, per-peer state, chat and captions.
+
+   ┌─ WIRE CONTRACT WITH backend/src/sockets/meetSocket.js ─────────────────────┐
+   │ Everything the hook assumes about the server is in EV + PROTO + ackError / │
+   │ asPeer below. If meetSocket.js names something differently, change it      │
+   │ HERE and nowhere else.                                                     │
+   │                                                                            │
+   │ client -> server                                                           │
+   │   meet:join   {roomId, create}  ack => {ok, hostId, peers:[{id,name}]}     │
+   │                                     or {error:'room-full'|'not-found'|     │
+   │                                              'invalid-room'}               │
+   │   meet:signal {to, data}        relay to ONE peer in the same room         │
+   │   meet:leave | meet:end | meet:kick {target} | meet:mute {target}          │
+   │ server -> client                                                           │
+   │   meet:peer-joined {id,name}  meet:peer-left {id}  meet:signal {from,data} │
+   │   meet:host-changed {hostId}  meet:force-mute  meet:kicked  meet:ended     │
+   └────────────────────────────────────────────────────────────────────────────┘
+
+   WebRTC rules used here
+   • The NEWCOMER always sends the offers (to everyone already in the room), so
+     two people can never offer to each other at the same time (no glare).
+   • Existing members only ever answer. They create their peer on "peer-joined"
+     (or lazily on the first offer) and wait.
+   • ICE candidates that arrive before setRemoteDescription are queued.
+   • Screen share = RTCRtpSender.replaceTrack on the video sender (no renegotiation).
+     To guarantee a video sender exists even with no camera, we always add an
+     audio and a video transceiver.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+export const EV = {
+  join: 'meet:join', leave: 'meet:leave', signal: 'meet:signal',
+  kick: 'meet:kick', mute: 'meet:mute', end: 'meet:end',
+  peerJoined: 'meet:peer-joined', peerLeft: 'meet:peer-left',
+  kicked: 'meet:kicked', ended: 'meet:ended',
+  hostChanged: 'meet:host-changed', forceMute: 'meet:force-mute',
+} as const;
+export const PROTO = {
+  join: (roomId: string, create: boolean) => ({ roomId, create: !!create }),
+  signal: (to: PeerId, data: unknown) => ({ to, data }),
+  target: (id: PeerId) => ({ target: id }),
+};
+
+/* ── types ─────────────────────────────────────────────────────────────── */
+export type PeerId = string | number;
+export type MeetStatus = 'idle' | 'connecting' | 'joined' | 'reconnecting' | 'error' | 'ended' | 'left';
+export type MeetPeer = {
+  id: PeerId; name: string; stream: MediaStream; mic: boolean; cam: boolean;
+  signing: boolean; sharing: boolean; connection: string;
+};
+export type ChatMessage = { id: string; from: PeerId | undefined; name: string; text: string; ts: number; own: boolean };
+export type Captions = Record<string, { speech?: { text: string; final: boolean }; sign?: { text: string; final: boolean } }>;
+type CaptionSource = 'speech' | 'sign';
+export type LocalState = { mic: boolean; cam: boolean; signing: boolean; sharing: boolean };
+export type MeetNotice = { type: 'joined' | 'left' | 'host'; name?: string };
+type PeerRec = {
+  id: PeerId; name: string; pc: RTCPeerConnection; dc: RTCDataChannel | null; initiator: boolean;
+  stream: MediaStream; pending: RTCIceCandidateInit[]; remoteSet: boolean; restarts: number;
+  mic: boolean; cam: boolean; signing: boolean; sharing: boolean; connection: string;
+};
+export type UseMeetRoomOpts = {
+  roomId: string; create?: boolean; selfId: string; stream: MediaStream | null;
+  onForceMute?: () => void; onNotice?: (n: MeetNotice) => void;
+};
+
+const ackError = (res: any): string | null => {
+  if (!res) return 'unknown';
+  if (res.ok === false || res.error) return String(res.error || res.code || 'unknown').toLowerCase().replace(/_/g, '-');
+  return null;
+};
+const asPeer = (p: any): { id: PeerId; name: string } => {
+  const x = p?.peer || p || {};
+  return { id: x.id ?? x.userId, name: String(x.name ?? x.username ?? 'Guest').slice(0, 40) };
+};
+
+export const ERROR_TEXT: Record<string, string> = {
+  'room-full': 'This meeting is full (3 people maximum).',
+  'not-found': 'That meeting does not exist or has already ended. Ask the host for a fresh link.',
+  'invalid-room': 'That meeting code is not valid.',
+  kicked: 'The host removed you from this meeting.',
+  ended: 'The host ended this meeting for everyone.',
+  'rate-limited': 'You are creating or joining meetings too quickly. Wait a minute and try again.',
+  'server-busy': 'The server has too many meetings open right now. Please try again shortly.',
+  timeout: 'The server did not answer. Please try again in a moment.',
+  unknown: 'Could not join the meeting.',
+};
+
+const FALLBACK_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+const CAPTION_TTL: Record<CaptionSource, number> = { speech: 6000, sign: 4000 };   // ms of silence before a caption line disappears
+const MAX_CHAT = 200;
+const MAX_ICE_RESTARTS = 2;
+
+async function fetchIceServers(): Promise<RTCIceServer[]> {
+  try {
+    const r = await api.meet.ice();
+    const list = r?.data?.iceServers || r?.iceServers;
+    if (Array.isArray(list) && list.length) return list;
+  } catch { /* fall through to STUN-only */ }
+  return FALLBACK_ICE;
+}
+
+export default function useMeetRoom({ roomId, create = false, selfId, stream, onForceMute, onNotice }: UseMeetRoomOpts) {
+  const [status, setStatus] = useState<MeetStatus>('idle');   // idle | connecting | joined | reconnecting | error | ended | left
+  const [error, setError] = useState<{ code: string; message: string } | null>(null);       // {code, message}
+  const [connectIssue, setConnectIssue] = useState(false);
+  const [hostId, setHostId] = useState<PeerId | null>(null);
+  // The server identifies people in a room by SOCKET id (peer ids, hostId), not by user id. Its join ack
+  // tells us ours; until then (and in tests without one) fall back to the user id.
+  const [meId, setMeId] = useState<PeerId | undefined>(selfId);
+  const meIdRef = useRef<PeerId | undefined>(selfId);
+  const [peers, setPeers] = useState<MeetPeer[]>([]);
+  const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [captions, setCaptions] = useState<Captions>({});   // { [userId]: { speech?: {text, final}, sign?: {text} } }
+
+  // Everything below is mutable plumbing that must not trigger renders.
+  const opts = useRef<UseMeetRoomOpts>({ roomId, selfId, stream });
+  opts.current = { roomId, create, selfId, stream, onForceMute, onNotice };
+  const socketRef = useRef<Socket | null>(null);
+  const iceRef = useRef(FALLBACK_ICE);
+  const peersRef = useRef(new Map<PeerId, PeerRec>());             // id -> peer record (see createPeer)
+  const orphansRef = useRef(new Map<PeerId, RTCIceCandidateInit[]>());           // id -> ICE candidates that arrived before their peer existed
+  const videoOutRef = useRef<MediaStreamTrack | null>(null);               // track to send on the video sender (camera or screen)
+  const stateRef = useRef<LocalState>({ mic: true, cam: true, signing: false, sharing: false });
+  const capTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const joinedOnce = useRef(false);
+  const starting = useRef(false);
+  const chatSeq = useRef(0);
+
+  /* ── small helpers ────────────────────────────────────────────────────── */
+  const syncPeers = useCallback(() => {
+    setPeers([...peersRef.current.values()].map((p) => ({
+      id: p.id, name: p.name, stream: p.stream, mic: p.mic, cam: p.cam,
+      signing: p.signing, sharing: p.sharing, connection: p.connection,
+    })));
+  }, []);
+
+  const broadcast = useCallback((obj: unknown) => {
+    const msg = JSON.stringify(obj);
+    for (const p of peersRef.current.values()) {
+      if (p.dc?.readyState === 'open') { try { p.dc.send(msg); } catch { /* channel closing */ } }
+    }
+  }, []);
+
+  const sendSignal = (to: PeerId, data: unknown) => socketRef.current?.emit(EV.signal, PROTO.signal(to, data));
+
+  /* ── captions (shared by local + remote) ──────────────────────────────── */
+  const clearCaption = useCallback((id: PeerId, source: CaptionSource) => {
+    setCaptions((prev) => {
+      if (!prev[id]?.[source]) return prev;
+      const { [source]: _drop, ...rest } = prev[id];
+      const next = { ...prev };
+      if (Object.keys(rest).length) next[id] = rest; else delete next[id];
+      return next;
+    });
+  }, []);
+
+  const putCaption = useCallback((id: PeerId, source: CaptionSource, text: unknown, final?: boolean) => {
+    if (source !== 'speech' && source !== 'sign') return;
+    const clean = String(text ?? '').slice(0, 300);
+    if (!clean.trim()) return;
+    setCaptions((prev) => {
+      const cur = prev[id] || {};
+      let line = clean;
+      // Sign words arrive one at a time: build a running line (last 10 words) that expires after 4 s idle.
+      if (source === 'sign' && cur.sign) line = `${cur.sign.text} ${clean}`.split(' ').slice(-10).join(' ');
+      return { ...prev, [id]: { ...cur, [source]: { text: line, final: !!final } } };
+    });
+    const key = `${id}:${source}`;
+    clearTimeout(capTimers.current.get(key));
+    capTimers.current.set(key, setTimeout(() => { capTimers.current.delete(key); clearCaption(id, source); }, CAPTION_TTL[source]));
+  }, [clearCaption]);
+
+  const dropCaptionsOf = useCallback((id: PeerId) => {
+    for (const s of ['speech', 'sign'] as const) {
+      const key = `${id}:${s}`;
+      clearTimeout(capTimers.current.get(key));
+      capTimers.current.delete(key);
+    }
+    setCaptions((prev) => { if (!prev[id]) return prev; const n = { ...prev }; delete n[id]; return n; });
+  }, []);
+
+  const dropCaptionOfSource = useCallback((id: PeerId, source: CaptionSource) => {
+    clearTimeout(capTimers.current.get(`${id}:${source}`));
+    capTimers.current.delete(`${id}:${source}`);
+    clearCaption(id, source);
+  }, [clearCaption]);
+
+  /* ── data channel ─────────────────────────────────────────────────────── */
+  const onChannelMessage = useCallback((peer: PeerRec, raw: unknown) => {
+    // Never trust peers: size-cap, parse defensively, whitelist fields. The sender's NAME always
+    // comes from the server-provided peer record, never from the message body.
+    if (typeof raw !== 'string' || raw.length > 4096) return;
+    let m: any;
+    try { m = JSON.parse(raw); } catch { return; }
+    if (!m || typeof m !== 'object') return;
+    if (m.type === 'caption') {
+      putCaption(peer.id, m.source, m.text, m.source === 'speech' ? m.final : true);
+    } else if (m.type === 'chat') {
+      const text = String(m.text ?? '').trim().slice(0, 500);
+      if (!text) return;
+      setChat((c) => [...c, { id: `c${++chatSeq.current}`, from: peer.id, name: peer.name, text, ts: Date.now(), own: false }].slice(-MAX_CHAT));
+    } else if (m.type === 'state') {
+      peer.mic = m.mic !== false;
+      peer.cam = m.cam !== false;
+      peer.signing = m.signing === true;
+      peer.sharing = m.sharing === true;
+      if (!peer.signing) dropCaptionOfSource(peer.id, 'sign');
+      syncPeers();
+    }
+  }, [putCaption, syncPeers, dropCaptionOfSource]);
+
+  const wireChannel = useCallback((peer: PeerRec, dc: RTCDataChannel) => {
+    peer.dc = dc;
+    dc.onopen = () => { try { dc.send(JSON.stringify({ type: 'state', ...stateRef.current })); } catch { /* ignore */ } };
+    dc.onmessage = (e) => onChannelMessage(peer, e.data);
+  }, [onChannelMessage]);
+
+  /* ── peer connections ─────────────────────────────────────────────────── */
+  const makeOffer = useCallback(async (peer: PeerRec, iceRestart = false) => {
+    try {
+      const offer = await peer.pc.createOffer({ iceRestart });
+      await peer.pc.setLocalDescription(offer);
+      sendSignal(peer.id, { type: 'offer', sdp: peer.pc.localDescription?.sdp });
+    } catch (e) { console.warn('[meet] createOffer failed', e); }
+  }, []);
+
+  const closePeer = useCallback((peer: PeerRec) => {
+    try {
+      if (peer.dc) { peer.dc.onopen = peer.dc.onmessage = null; peer.dc.close(); }
+      peer.pc.ontrack = peer.pc.onicecandidate = peer.pc.onconnectionstatechange = peer.pc.ondatachannel = null;
+      peer.pc.close();
+    } catch { /* already closed */ }
+  }, []);
+
+  const createPeer = useCallback((id: PeerId, name: string | null, initiator: boolean): PeerRec => {
+    const existing = peersRef.current.get(id);
+    if (existing) { if (name) existing.name = name; return existing; }
+    const pc = new RTCPeerConnection({ iceServers: iceRef.current });
+    const peer: PeerRec = {
+      id, name: name || 'Guest', pc, dc: null, initiator,
+      stream: new MediaStream(),                    // we add tracks ourselves; ignore event.streams
+      pending: [], remoteSet: false, restarts: 0,
+      mic: true, cam: true, signing: false, sharing: false, connection: 'new',
+    };
+    peersRef.current.set(id, peer);
+
+    pc.onicecandidate = (e) => { if (e.candidate) sendSignal(id, { type: 'candidate', candidate: e.candidate.toJSON() }); };
+    pc.ontrack = (e) => {
+      if (!peer.stream.getTracks().includes(e.track)) peer.stream.addTrack(e.track);
+      syncPeers();
+    };
+    pc.onconnectionstatechange = () => {
+      peer.connection = pc.connectionState;
+      syncPeers();
+      // Only the original offerer may re-offer, which keeps "no glare" true during ICE restarts.
+      if (pc.connectionState === 'failed' && peer.initiator && peer.restarts < MAX_ICE_RESTARTS) {
+        peer.restarts += 1;
+        makeOffer(peer, true);
+      }
+    };
+
+    // Data channel: the offerer creates it BEFORE createOffer; the answerer receives it.
+    if (initiator) wireChannel(peer, pc.createDataChannel('meet'));
+    else pc.ondatachannel = (e) => { if (e.channel.label === 'meet') wireChannel(peer, e.channel); };
+
+    const s = opts.current.stream;
+    const audio = s?.getAudioTracks()[0];
+    const video = videoOutRef.current || s?.getVideoTracks()[0];
+    if (audio) pc.addTrack(audio, s); else pc.addTransceiver('audio', { direction: 'sendrecv' });
+    if (video) pc.addTrack(video, s || peer.stream); else pc.addTransceiver('video', { direction: 'sendrecv' });
+
+    syncPeers();
+    return peer;
+  }, [makeOffer, syncPeers, wireChannel]);
+
+  const flushCandidates = async (peer: PeerRec) => {
+    peer.remoteSet = true;
+    const queued = peer.pending.splice(0);
+    for (const c of queued) { try { await peer.pc.addIceCandidate(c); } catch { /* stale candidate */ } }
+  };
+
+  const onSignal = useCallback(async (payload: any) => {
+    const from = payload?.from;
+    const data = payload?.data;
+    if (from == null || !data || typeof data !== 'object') return;
+    try {
+      if (data.type === 'offer' && typeof data.sdp === 'string') {
+        const peer = createPeer(from, null, false);
+        await peer.pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
+        const orphans = orphansRef.current.get(from);
+        if (orphans) { peer.pending.push(...orphans); orphansRef.current.delete(from); }
+        await flushCandidates(peer);
+        const answer = await peer.pc.createAnswer();
+        await peer.pc.setLocalDescription(answer);
+        sendSignal(from, { type: 'answer', sdp: peer.pc.localDescription?.sdp });
+      } else if (data.type === 'answer' && typeof data.sdp === 'string') {
+        const peer = peersRef.current.get(from);
+        if (!peer || peer.pc.signalingState !== 'have-local-offer') return;
+        await peer.pc.setRemoteDescription({ type: 'answer', sdp: data.sdp });
+        await flushCandidates(peer);
+      } else if (data.type === 'candidate' && data.candidate) {
+        const peer = peersRef.current.get(from);
+        if (!peer) {                                 // candidate raced ahead of everything: park it briefly
+          const list = orphansRef.current.get(from) || [];
+          if (list.length < 50) orphansRef.current.set(from, [...list, data.candidate]);
+          return;
+        }
+        if (peer.remoteSet) { try { await peer.pc.addIceCandidate(data.candidate); } catch { /* ignore */ } }
+        else if (peer.pending.length < 100) peer.pending.push(data.candidate);
+      }
+    } catch (e) { console.warn('[meet] signal handling failed', e); }
+  }, [createPeer]);
+
+  /* ── teardown ─────────────────────────────────────────────────────────── */
+  const teardownPeers = useCallback(() => {
+    for (const p of peersRef.current.values()) closePeer(p);
+    peersRef.current.clear();
+    orphansRef.current.clear();
+    for (const t of capTimers.current.values()) clearTimeout(t);
+    capTimers.current.clear();
+    setPeers([]);
+    setCaptions({});
+  }, [closePeer]);
+
+  /** Closes the socket and every connection. Does NOT stop local tracks (useLocalMedia owns those). */
+  const teardownAll = useCallback((emitLeave: boolean) => {
+    const s = socketRef.current;
+    socketRef.current = null;
+    if (s) {
+      if (emitLeave && s.connected) s.emit(EV.leave);
+      s.removeAllListeners();
+      s.disconnect();
+    }
+    teardownPeers();
+    joinedOnce.current = false;
+    starting.current = false;
+    setConnectIssue(false);
+  }, [teardownPeers]);
+
+  const finish = useCallback((code: string) => {
+    teardownAll(false);
+    setError({ code, message: ERROR_TEXT[code] || ERROR_TEXT.unknown });
+    setStatus(code === 'kicked' || code === 'ended' ? 'ended' : 'error');
+  }, [teardownAll]);
+
+  /* ── join ─────────────────────────────────────────────────────────────── */
+  const join = useCallback(async (initial: Partial<LocalState> = {}) => {
+    if (socketRef.current || starting.current) return;
+    starting.current = true;
+    stateRef.current = { ...stateRef.current, ...initial };
+    setStatus('connecting');
+    setError(null);
+    setChat([]);
+
+    iceRef.current = await fetchIceServers();
+    if (!starting.current) return;                  // leave()/unmount happened while we were fetching
+
+    // `auth` as a function is re-run on every (re)connect, so an expired 15-minute access token is
+    // refreshed instead of failing the handshake forever (same pattern as Community.jsx).
+    const socket = io(SOCKET_URL, {
+      auth: (cb: (data: object) => void) => { getFreshToken().then((token) => cb({ token })); },
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+    });
+    socketRef.current = socket;
+    const live = () => socketRef.current === socket;
+
+    const onJoined = (res: any) => {
+      teardownPeers();                              // on reconnect: drop any stale connections first
+      meIdRef.current = res.selfId ?? opts.current.selfId; setMeId(meIdRef.current);
+      setHostId(res.hostId ?? res.host ?? null);
+      joinedOnce.current = true;
+      starting.current = false;
+      setStatus('joined');
+      // We are the newcomer: offer to everyone who is already here.
+      for (const raw of Array.isArray(res.peers) ? res.peers : []) {
+        const p = asPeer(raw);
+        if (p.id == null || p.id === meIdRef.current || p.id === opts.current.selfId) continue;
+        makeOffer(createPeer(p.id, p.name, true));
+      }
+    };
+
+    const doJoin = (createFlag: boolean): void => {
+      socket.timeout(15000).emit(EV.join, PROTO.join(opts.current.roomId, createFlag), (err: unknown, res: any) => {
+        if (!live()) return;
+        if (err) return finish('timeout');
+        const code = ackError(res);
+        if (code) {
+          // After a network blip the room may have been torn down; re-create it rather than fail.
+          if (code === 'not-found' && joinedOnce.current && !createFlag) return doJoin(true);
+          return finish(code);
+        }
+        onJoined(res);
+      });
+    };
+
+    socket.on('connect', () => { setConnectIssue(false); doJoin(!joinedOnce.current && !!opts.current.create); });
+    socket.on('connect_error', () => { if (live()) setConnectIssue(true); });
+    socket.on('disconnect', (reason: string) => {
+      if (!live() || reason === 'io client disconnect') return;
+      teardownPeers();                              // peers are rebuilt from scratch after rejoin
+      setStatus('reconnecting');
+      if (reason === 'io server disconnect') socket.connect();   // server dropped us: socket.io will not retry by itself
+    });
+
+    socket.on(EV.signal, onSignal);
+    socket.on(EV.peerJoined, (raw: any) => {
+      const p = asPeer(raw);
+      if (p.id == null || p.id === meIdRef.current || p.id === opts.current.selfId) return;
+      createPeer(p.id, p.name, false);              // wait for THEIR offer
+      opts.current.onNotice?.({ type: 'joined', name: p.name });
+    });
+    socket.on(EV.peerLeft, (raw: any) => {
+      const id = raw?.id ?? raw?.userId ?? raw;
+      const peer = peersRef.current.get(id);
+      if (!peer) return;
+      closePeer(peer);
+      peersRef.current.delete(id);
+      dropCaptionsOf(id);
+      syncPeers();
+      opts.current.onNotice?.({ type: 'left', name: peer.name });
+    });
+    socket.on(EV.hostChanged, (raw: any) => {
+      const id = raw?.hostId ?? raw?.id ?? raw;
+      setHostId(id);
+      if (id === meIdRef.current) opts.current.onNotice?.({ type: 'host' });
+    });
+    socket.on(EV.forceMute, () => opts.current.onForceMute?.());
+    socket.on(EV.kicked, () => finish('kicked'));
+    socket.on(EV.ended, () => finish('ended'));
+  }, [closePeer, createPeer, dropCaptionsOf, finish, makeOffer, onSignal, syncPeers, teardownPeers]);
+
+  /* ── public actions ───────────────────────────────────────────────────── */
+  const leave = useCallback(() => { teardownAll(true); setStatus('left'); }, [teardownAll]);
+
+  const endForAll = useCallback(() => {
+    socketRef.current?.emit(EV.end);
+    teardownAll(false);
+    setStatus('left');
+  }, [teardownAll]);
+
+  const kick = useCallback((id: PeerId) => socketRef.current?.emit(EV.kick, PROTO.target(id)), []);
+  const mute = useCallback((id: PeerId) => socketRef.current?.emit(EV.mute, PROTO.target(id)), []);
+
+  const sendChat = useCallback((text: unknown) => {
+    const t = String(text ?? '').trim().slice(0, 500);
+    if (!t) return;
+    broadcast({ type: 'chat', text: t });
+    setChat((c) => [...c, { id: `c${++chatSeq.current}`, from: opts.current.selfId, name: 'You', text: t, ts: Date.now(), own: true }].slice(-MAX_CHAT));
+  }, [broadcast]);
+
+  /** source: 'speech' (text, final) | 'sign' (text). Also shows the line on our own tile. */
+  const sendCaption = useCallback((source: CaptionSource, text: unknown, final = false) => {
+    const t = String(text ?? '').slice(0, 300);
+    if (!t.trim()) return;
+    broadcast(source === 'speech' ? { type: 'caption', source, text: t, final: !!final } : { type: 'caption', source: 'sign', text: t });
+    putCaption(opts.current.selfId, source, t, final);
+  }, [broadcast, putCaption]);
+
+  /** Merge-and-broadcast our own {mic, cam, signing, sharing}. New peers get it when their channel opens. */
+  const sendState = useCallback((patch: Partial<LocalState>) => {
+    stateRef.current = { ...stateRef.current, ...patch };
+    broadcast({ type: 'state', ...stateRef.current });
+  }, [broadcast]);
+
+  /** Swap what we send on the video sender (screen track, or back to the camera track). No renegotiation. */
+  const setOutgoingVideo = useCallback((track: MediaStreamTrack | null | undefined) => {
+    videoOutRef.current = track || null;
+    for (const p of peersRef.current.values()) {
+      const tr = p.pc.getTransceivers().find((t) => t.receiver.track?.kind === 'video');
+      tr?.sender.replaceTrack(track || null).catch((e) => console.warn('[meet] replaceTrack failed', e));
+    }
+  }, []);
+
+  // Full cleanup on unmount and when the tab is closed/navigated away.
+  useEffect(() => {
+    const onHide = () => teardownAll(true);
+    window.addEventListener('pagehide', onHide);
+    return () => { window.removeEventListener('pagehide', onHide); teardownAll(true); };
+  }, [teardownAll]);
+
+  return {
+    status, error, connectIssue, hostId, isHost: hostId != null && hostId === meId,
+    peers, chat, captions,
+    join, leave, endForAll, kick, mute, sendChat, sendCaption, sendState, setOutgoingVideo,
+  };
+}
+
+export type MeetRoom = ReturnType<typeof useMeetRoom>;
+
+========================================================================
+FILE: frontend/lib/meet/useSignCaptions.ts
+========================================================================
+'use client';
+/* eslint-disable react-hooks/exhaustive-deps -- long-lived callbacks are read through refs on purpose */
+import { useEffect, useRef, useState } from 'react';
+import type { RefObject } from 'react';
+import { makeCaptioner } from './captioner';
+import { makeSlowGuard } from './slowGuard';
+import { drawHand } from './drawHand';
+
+type Props = {
+  enabled: boolean;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  canvasRef: RefObject<HTMLCanvasElement | null>;
+  onWord: (text: string) => void;
+  onAutoDisable: (reason: 'slow' | 'error') => void;
+};
+
+/**
+ * Sign-gesture captions. While `enabled`, runs the hand-landmark model on the LOCAL <video> element
+ * (the raw camera video, not a canvas copy), turns predictions into words and calls onWord(text).
+ * Everything happens on this device; no frame is ever uploaded.
+ *
+ * - The MediaPipe bundle is fetched with a dynamic import inside createSignEngine, so nothing is
+ *   downloaded until the first time sign mode is switched on.
+ * - Draws the hand skeleton on `canvasRef` (which must sit over the video).
+ * - onAutoDisable(reason) fires if loading fails ('error') or frames are consistently too slow ('slow').
+ *
+ * Returns { status: 'off' | 'loading' | 'running', debug: { label, conf, ms } | null }.
+ * `debug` is updated ~4x/second (never per frame) so it costs no re-renders.
+ */
+export default function useSignCaptions({ enabled, videoRef, canvasRef, onWord, onAutoDisable }: Props) {
+  const [status, setStatus] = useState<'off' | 'loading' | 'running'>('off');
+  const [debug, setDebug] = useState<{ label: string | null; conf: number; ms: number } | null>(null);
+  const cb = useRef({ onWord, onAutoDisable });
+  cb.current = { onWord, onAutoDisable };
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let cancelled = false;
+    let engine: { start(): void; close(): void } | null = null;
+    setStatus('loading');
+    const captioner = makeCaptioner();
+    const guard = makeSlowGuard();
+    let lastDebug = 0;
+
+    (async () => {
+      try {
+        const { createSignEngine } = await import('./signEngine');            // lazy: only when sign mode is turned on
+        const video = videoRef.current;
+        if (!video) throw new Error('no local video element');
+        const e = await createSignEngine({
+          video,
+          onResult: (r) => {
+            if (cancelled) return;
+            drawHand(canvasRef.current, video, r.landmarks);
+            const word = captioner(r.label, r.conf);
+            if (word) cb.current.onWord(word.text);
+            const now = performance.now();
+            if (now - lastDebug > 250) { lastDebug = now; setDebug({ label: r.label, conf: r.conf, ms: r.ms }); }
+            if (guard(r.ms)) { cb.current.onAutoDisable('slow'); }
+          },
+        });
+        if (cancelled) { e.close(); return; }                                  // toggled off while the model was loading
+        engine = e; e.start(); setStatus('running');
+      } catch (err) {
+        console.warn('[sign] could not start', err);
+        if (!cancelled) cb.current.onAutoDisable('error');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try { engine?.close(); } catch { /* already closed */ }
+      drawHand(canvasRef.current, null, null);                                  // clear the skeleton
+      setStatus('off'); setDebug(null);
+    };
+  }, [enabled]);
+
+  return { status, debug };
+}
+
+========================================================================
 FILE: frontend/lib/phrases.ts
 ========================================================================
 export type Phrase = {
@@ -18191,10 +20093,10 @@ FILE: frontend/lib/useSpeech.ts
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type Options = { lang: string; continuous?: boolean; onFinal?: (text: string) => void };
+type Options = { lang: string; continuous?: boolean; onFinal?: (text: string) => void; onInterim?: (text: string) => void };
 
 /** Thin wrapper around the browser Web Speech API. */
-export function useSpeechRecognition({ lang, continuous = false, onFinal }: Options) {
+export function useSpeechRecognition({ lang, continuous = false, onFinal, onInterim }: Options) {
   const [supported, setSupported] = useState(true);
   const [listening, setListening] = useState(false);
   const [text, setText] = useState('');
@@ -18203,6 +20105,8 @@ export function useSpeechRecognition({ lang, continuous = false, onFinal }: Opti
   const finalRef = useRef('');
   const onFinalRef = useRef(onFinal);
   onFinalRef.current = onFinal;
+  const onInterimRef = useRef(onInterim);
+  onInterimRef.current = onInterim;
 
   useEffect(() => {
     const w = window as any;
@@ -18236,6 +20140,8 @@ export function useSpeechRecognition({ lang, continuous = false, onFinal }: Opti
           onFinalRef.current?.(t.trim());
         } else interim += t;
       }
+      // Optional: interim-only text of this event (used by Meet to stream live captions).
+      if (interim.trim()) onInterimRef.current?.(interim.trim());
       setText((finalRef.current + ' ' + interim).trim());
     };
     rec.onerror = (e: any) => {

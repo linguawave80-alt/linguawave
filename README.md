@@ -1,6 +1,6 @@
 # 🌊 LinguaWave
 
-> Speak a phrase, get instant word-by-word pronunciation feedback, practise with an AI tutor, track your progress and chat with other learners in real time.
+> Speak a phrase, get instant word-by-word pronunciation feedback, practise with an AI tutor, track your progress, chat with other learners in real time and meet face to face in video rooms with live speech and sign-language captions.
 
 ![Node.js](https://img.shields.io/badge/Node.js-20-339933?logo=node.js&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express)
@@ -9,6 +9,8 @@
 ![Next.js](https://img.shields.io/badge/Next.js-14-000000?logo=next.js)
 ![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
 ![Groq](https://img.shields.io/badge/AI-Groq-F55036)
+![WebRTC](https://img.shields.io/badge/Meet-WebRTC-333333?logo=webrtc&logoColor=white)
+![MediaPipe](https://img.shields.io/badge/Sign%20captions-MediaPipe-0097A7)
 ![Jest](https://img.shields.io/badge/Tests-Jest%20%2B%20Supertest-C21325?logo=jest)
 
 ---
@@ -45,7 +47,7 @@
 3. Has an LLM (via **Groq**) score the attempt — overall accuracy, fluency, intonation, stress, phoneme-level issues, a per-word breakdown, and improvement tips.
 4. Stores the result and updates the learner's streak, stats, charts and leaderboard position.
 
-On top of that there is an **AI conversation tutor** with roleplay scenarios, **live community chat rooms** over Socket.IO, and a full authentication system (email + password with OTP verification, Google sign-in, password reset, refresh-token rotation, session management).
+On top of that there is an **AI conversation tutor** with roleplay scenarios, **live community chat rooms** over Socket.IO, **Meet** — peer-to-peer video rooms (up to 3 people) with live speech captions and on-device sign-gesture captions — and a full authentication system (email + password with OTP verification, Google sign-in, password reset, refresh-token rotation, session management).
 
 The backend is a modular monolith (Express + Socket.IO) backed by **Firebase Firestore**. There are **two interchangeable frontends** — Next.js 14 (TypeScript) and React + Vite (JavaScript) — that talk to the same API.
 
@@ -60,6 +62,7 @@ The backend is a modular monolith (Express + Socket.IO) backed by **Firebase Fir
 | 📈 **Progress** | Accuracy trend charts (Chart.js), practice history with pagination, delete sessions |
 | 🏆 **Gamification** | Streaks, total sessions / minutes, average accuracy, leaderboard (top 10) |
 | 💬 **Community** | Real-time chat rooms (`global`, `english`, `french`, `spanish`), typing indicators, join/leave notices, online-user count, persisted history |
+| 📹 **Meet (video rooms)** | Peer-to-peer WebRTC rooms for up to 3 people: mic / camera / screen share, in-call chat (not stored), participant list, host controls (mute, remove, end for everyone), shareable room links. Accessibility built in: **live speech captions** and **sign-gesture captions** recognised on-device with MediaPipe. See [§17](#17-meet-video-rooms) |
 | 🔐 **Auth** | Email/password, 6-digit email OTP (bcrypt-hashed, lockout), Google sign-in via Firebase Auth, forgot/reset password, email verification, refresh-token rotation, "log out everywhere" |
 | 🛡️ **Admin** | List users, change roles (`USER` / `ADMIN` / `MODERATOR`), platform stats, add languages |
 | 🌍 **Languages** | English, French, Spanish, German, Japanese, Mandarin, Italian, Portuguese (BR) in the UI; the phrase API also supports Korean, Arabic, Russian and Hindi |
@@ -75,6 +78,8 @@ flowchart LR
       FE["Next.js 14 (TS)\nor React + Vite"]
       SR["Web Speech API"]
       FB["Firebase Web SDK\n(Google popup)"]
+      MP["MediaPipe HandLandmarker\n(sign captions, on-device)"]
+      PEER["Other participants\n(WebRTC mesh)"]
     end
 
     subgraph "Render Web Service — backend/"
@@ -90,11 +95,15 @@ flowchart LR
 
     GROQ["Groq API\n(LLM)"]
     BREVO["Brevo\n(transactional email)"]
+    ICE["STUN / optional TURN"]
 
     FE -- "REST + cookies" --> API
     FE -- "WebSocket (JWT)" --> IO
     SR --> FE
+    MP --> FE
     FB -- "ID token" --> FE
+    FE <-- "WebRTC audio / video / data" --> PEER
+    FE -. "ICE" .-> ICE
     API --> MW
     API --> FS
     IO --> FS
@@ -103,7 +112,7 @@ flowchart LR
     API --> BREVO
 ```
 
-**Why a modular monolith?** Auth, speech analysis, sessions and chat share middleware, rate limiting, one database and one deployment. Splitting them now would add network hops and operational overhead for no gain. The natural first seams to extract at scale are the **speech/AI service** (expensive, independently scalable) and **chat** (needs Redis pub/sub for multi-instance Socket.IO).
+**Why a modular monolith?** Auth, speech analysis, sessions and chat share middleware, rate limiting, one database and one deployment. Splitting them now would add network hops and operational overhead for no gain. Meet adds almost no server load: audio and video flow peer-to-peer, and the backend only relays WebRTC signaling over the existing Socket.IO connection (see [§17](#17-meet-video-rooms)). The natural first seams to extract at scale are the **speech/AI service** (expensive, independently scalable) and **chat** (needs Redis pub/sub for multi-instance Socket.IO).
 
 ### Request lifecycle
 
@@ -126,10 +135,12 @@ flowchart LR
 | Email | Brevo transactional API |
 | AI | Groq Chat Completions API (OpenAI-compatible) |
 | Logging | Winston + Morgan, per-request IDs |
-| Tests | Jest + Supertest + socket.io-client |
+| Tests | Jest + Supertest + socket.io-client (backend) · Vitest + jsdom (`frontend-react`) |
 | Frontend A | Next.js 14 (App Router) + TypeScript, `react-chartjs-2` |
 | Frontend B | React + Vite + React Router (JavaScript, 1:1 port of A) |
-| Browser APIs | Web Speech API (`SpeechRecognition`) |
+| Browser APIs | Web Speech API (`SpeechRecognition`), WebRTC (`RTCPeerConnection`, data channels), `getUserMedia` / `getDisplayMedia` |
+| Video rooms | WebRTC peer-to-peer mesh, Socket.IO signaling, STUN (+ optional TURN) |
+| Sign captions | MediaPipe Tasks Vision `HandLandmarker` (WASM, pinned) + a small MLP exported from Python (`ml/export_model.py`); runs entirely in the browser |
 | Hosting | Render (backend + frontend web services, see `render.yaml`) |
 
 ---
@@ -178,10 +189,11 @@ linguawave/
 │   │   ├── page.tsx               # landing + login / signup / OTP modal
 │   │   ├── reset-password/
 │   │   └── dashboard/             # layout (auth guard) · practice · tutor · progress
-│   │                              # community · sessions · leaderboard
+│   │                              # community · meet (lobby + room) · sessions · leaderboard
 │   ├── components/                # AuthModal, charts, Icon, Logo, ui
 │   └── lib/                       # api client, auth-context, config, firebase,
-│                                  # phrases (offline bank), toast, useSpeech
+│                                  # phrases (offline bank), toast, useSpeech,
+│                                  # meet/ (WebRTC room hook, local media, sign-caption engine)
 │
 └── frontend-react/                # React + Vite port (same UI, same CSS, same API calls)
     ├── vite.config.js             # dev & preview on :3000
@@ -247,6 +259,8 @@ cp .env.example .env.local
 npm run dev                 # http://localhost:3000
 ```
 
+> 📹 **Meet in the Next.js app:** install the exact-pinned MediaPipe package (`npm i --save-exact @mediapipe/tasks-vision@0.10.14`; the version must equal `WASM_BASE` in `lib/meet/signEngine.ts`) and copy `sign_model.json` and `hand_landmarker.task` from `frontend-react/public/` into `frontend/public/`. Sign captions load them on demand; the rest of Meet works without them. Details in `frontend/README.md`.
+
 **Option B: React + Vite**
 
 ```bash
@@ -260,6 +274,8 @@ npm run build               # → dist/
 Open <http://localhost:3000>, register an account, and (in dev, with no `BREVO_API_KEY`) copy the OTP from the backend console.
 
 > 🎤 **Browser support:** speech recognition uses the Web Speech API (Chrome, Edge, Android). iOS Safari and other unsupported browsers automatically get a **typed-input fallback** on the Practice page.
+>
+> 📹 **Trying Meet locally:** `localhost` counts as a secure context, so camera and mic work over `http://localhost:3000`; any other host needs HTTPS. Open the lobby at `/dashboard/meet`, start a meeting, then join from a second browser profile with the code. Chrome desktop is the supported target for captions.
 
 ---
 
@@ -551,6 +567,7 @@ Connections without a valid token (or for a deleted user) are rejected.
 | `session:started` | `{ sessionId, timestamp }` | Ack for `session:start` |
 | `session:completed` | `{ sessionId, accuracy, duration }` | Emitted after `POST /sessions` |
 | `pronunciation:feedback` | `object + timestamp` | Multi-device feedback |
+| `pronunciation:analyzed` | `{ recordId, accuracy, timestamp }` | Emitted to the user's devices after `POST /speech/analyze` |
 
 Every socket also auto-joins a private `user:<id>` room for targeted delivery.
 
@@ -562,6 +579,7 @@ Every socket also auto-joins a private `user:<id>` room for targeted delivery.
 | → server | `meet:signal` | `{ to, data }` where `data` is `{type:'offer'\|'answer', sdp}` or `{type:'candidate', candidate}`; relayed to one peer in the same room |
 | → server | `meet:leave`, `meet:end` | host-only for `end` |
 | → server | `meet:kick`, `meet:mute` | `{ target }` (host only; `target` is a socket id) |
+| → server | `meet:host` | `{ action: 'end' \| 'kick' \| 'mute', target? }` — single-event alias for the three host actions |
 | ← client | `meet:peer-joined` / `meet:peer-left` | `{ id, name, userId }` / `{ id }` |
 | ← client | `meet:signal` | `{ from, data }` |
 | ← client | `meet:host-changed` / `meet:force-mute` / `meet:kicked` / `meet:ended` | `{ hostId }` / – / – / – |
@@ -674,6 +692,13 @@ curl -X POST http://localhost:5000/api/v1/auth/register \
 | Microphone does nothing | Unsupported browser (e.g. iOS Safari) — use the typed-input fallback; also check mic permission & HTTPS |
 | AI results look generic | `GROQ_API_KEY` missing or call failed → mock/demo fallback is being served |
 | `429 Too many requests` | Respect the `Retry-After` header; see limits in §8.4 |
+| Meet: stuck on "Waking server…" | Free Render plan is cold-starting; wait up to a minute (the lobby pings `/health`) |
+| Meet: "does not exist" when joining | Rooms exist only while someone is inside — the host must start the meeting first, then share the link |
+| Meet: "This meeting is full" | Rooms are capped at `MEET_MAX_PEERS` (default 3) because of the WebRTC mesh |
+| Meet: connected but no audio / video between some people | Strict NAT or corporate network — configure a TURN relay (`MEET_TURN_*`, see [§17.5](#175-vercel--render)) |
+| Meet: camera / mic not available | Permission denied or page not served over HTTPS (`localhost` is exempt) |
+| Sign captions never start or switch themselves off | `sign_model.json` / `hand_landmarker.task` missing from `public/`, MediaPipe version differs from the pin, or the device was too slow (> 150 ms/frame on average → auto-off with a toast) |
+| No speech captions in Meet | Web Speech API needs Chrome / Edge; other browsers can still read others' captions |
 
 ---
 
